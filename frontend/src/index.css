@@ -1,0 +1,97 @@
+@import "tailwindcss";
+@import "reactflow/dist/style.css";
+
+:root {
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: #09090b;
+  color: #f4f4f5;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+#root { height: 100vh; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #18181b; }
+::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #52525b; }
+
+/* Reactflow overrides */
+.react-flow__background { background-color: #09090b !important; }
+.react-flow__edge-path { stroke: #3f3f46; stroke-width: 2; }
+.react-flow__edge.selected .react-flow__edge-path { stroke: #6366f1; }
+.react-flow__controls { background: #18181b; border: 1px solid #3f3f46; border-radius: 8px; overflow: hidden; }
+.react-flow__controls-button { background: #18181b; border-color: #3f3f46; color: #a1a1aa; }
+.react-flow__controls-button:hover { background: #27272a; }
+.react-flow__minimap { background: #18181b; border: 1px solid #3f3f46; border-radius: 8px; }
+
+/* Answer markdown */
+.answer-prose p { margin-bottom: 0.75rem; line-height: 1.7; }
+.answer-prose h1,.answer-prose h2,.answer-prose h3 { font-weight: 600; color: #f4f4f5; margin: 1rem 0 0.5rem; }
+.answer-prose ul,.answer-prose ol { margin-left: 1.25rem; margin-bottom: 0.75rem; }
+.answer-prose li { color: #d4d4d8; margin-bottom: 0.25rem; }
+.answer-prose code { background: #27272a; color: #a5b4fc; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; font-family: monospace; }
+.answer-prose pre { background: #18181b; border: 1px solid #3f3f46; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; overflow-x: auto; }
+.answer-prose pre code { background: transparent; padding: 0; }
+.answer-prose strong { color: #f4f4f5; font-weight: 600; }
+.answer-prose blockquote { border-left: 2px solid #6366f1; padding-left: 1rem; color: #a1a1aa; font-style: italic; margin-bottom: 0.75rem; }
+.answer-prose hr { border: none; border-top: 1px solid #3f3f46; margin: 1.25rem 0; }
+
+/* Quick mode — highlight bold terms */
+.quick-answer strong { background: rgba(99,102,241,0.12); color: #a5b4fc; padding: 1px 5px; border-radius: 4px; font-weight: 600; }
+.quick-answer .answer-prose li { color: #e4e4e7; }
+
+/* Long mode — TL;DR section */
+.long-answer .tldr-block { background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.2); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; }
+
+/* Center mode prose — larger, readable */
+.center-prose p { font-size: 1.15rem; line-height: 1.9; margin-bottom: 1rem; color: #f4f4f5; }
+.center-prose h2, .center-prose h3 { font-size: 1.1rem; margin: 1.5rem 0 0.5rem; color: #e4e4e7; }
+.center-prose ul, .center-prose ol { margin-left: 1.5rem; margin-bottom: 1rem; }
+.center-prose li { font-size: 1.1rem; line-height: 1.8; color: #d4d4d8; margin-bottom: 0.35rem; }
+.center-prose strong { color: #a5b4fc; font-weight: 600; }
+.center-prose code { background: #27272a; color: #a5b4fc; padding: 2px 8px; border-radius: 4px; font-size: 1rem; font-family: monospace; }
+.center-prose hr { border: none; border-top: 1px solid #3f3f46; margin: 1.5rem 0; }
+
+/* Deep Dive prose */
+.deep-prose p { margin-bottom: 0.875rem; line-height: 1.75; }
+.deep-prose h1,.deep-prose h2 { font-size: 1rem; font-weight: 700; color: #e4e4e7; margin: 1.5rem 0 0.6rem; border-bottom: 1px solid #27272a; padding-bottom: 0.35rem; }
+.deep-prose h3 { font-size: 0.9rem; font-weight: 600; color: #a5b4fc; margin: 1.25rem 0 0.4rem; }
+.deep-prose ul,.deep-prose ol { margin-left: 1.25rem; margin-bottom: 0.875rem; }
+.deep-prose li { color: #d4d4d8; margin-bottom: 0.3rem; line-height: 1.65; }
+.deep-prose code { background: #27272a; color: #a5b4fc; padding: 2px 6px; border-radius: 4px; font-size: 0.82em; font-family: monospace; }
+.deep-prose pre { background: #18181b; border: 1px solid #3f3f46; border-radius: 8px; padding: 1rem; margin-bottom: 0.875rem; overflow-x: auto; }
+.deep-prose pre code { background: transparent; padding: 0; }
+.deep-prose strong { color: #f4f4f5; font-weight: 600; }
+.deep-prose blockquote { border-left: 2px solid #6366f1; padding-left: 1rem; color: #a1a1aa; font-style: italic; margin-bottom: 0.875rem; }
+.deep-prose hr { border: none; border-top: 1px solid #3f3f46; margin: 1.5rem 0; }
+
+/* Architecture Flow prose */
+.arch-prose p { margin-bottom: 0.875rem; line-height: 1.75; }
+.arch-prose h1,.arch-prose h2 { font-size: 1rem; font-weight: 700; color: #e4e4e7; margin: 1.5rem 0 0.6rem; border-bottom: 1px solid #27272a; padding-bottom: 0.35rem; }
+.arch-prose h3 { font-size: 0.9rem; font-weight: 600; color: #fbbf24; margin: 1.25rem 0 0.4rem; }
+.arch-prose ul,.arch-prose ol { margin-left: 1.25rem; margin-bottom: 0.875rem; }
+.arch-prose li { color: #d4d4d8; margin-bottom: 0.3rem; line-height: 1.65; }
+.arch-prose code { background: #27272a; color: #fcd34d; padding: 2px 6px; border-radius: 4px; font-size: 0.82em; font-family: monospace; }
+.arch-prose pre { background: #18181b; border: 1px solid #3f3f46; border-radius: 8px; padding: 1rem; margin-bottom: 0.875rem; overflow-x: auto; }
+.arch-prose pre code { background: transparent; padding: 0; }
+.arch-prose strong { color: #fef3c7; font-weight: 600; }
+.arch-prose blockquote { border-left: 2px solid #d97706; padding-left: 1rem; color: #a1a1aa; font-style: italic; margin-bottom: 0.875rem; }
+.arch-prose hr { border: none; border-top: 1px solid #3f3f46; margin: 1.5rem 0; }
+
+/* Drill-down summary card */
+.drill-summary { background: rgba(99,102,241,0.07); border: 1px solid rgba(99,102,241,0.18); border-radius: 10px; padding: 0.875rem 1rem; margin-bottom: 1rem; }
+.drill-summary ul { margin-left: 0; list-style: none; padding: 0; }
+.drill-summary li { color: #e4e4e7; font-size: 0.85rem; line-height: 1.6; padding: 0.2rem 0; display: flex; align-items: flex-start; gap: 0.5rem; }
+.drill-summary li::before { content: "→"; color: #6366f1; flex-shrink: 0; margin-top: 1px; }
