@@ -131,6 +131,77 @@ export async function requestArchFlow(
   await consumeSSE(`${BASE}/arch-flow`, { session_id: sessionId, question }, handlers, signal)
 }
 
+// ── Practice Interview ──────────────────────────────────────────────
+
+export async function getPracticeQuestions(
+  sessionId: string,
+  count = 10,
+  questionType: 'behavioral' | 'technical' | 'mixed' = 'mixed',
+): Promise<{ id: string; question: string; difficulty: string; category: string }[]> {
+  try {
+    const res = await fetch(`${BASE}/practice/questions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, count, question_type: questionType }),
+    })
+    const data = await res.json()
+    return data.questions ?? []
+  } catch {
+    return []
+  }
+}
+
+export async function evaluatePracticeAnswer(
+  sessionId: string,
+  question: string,
+  answer: string,
+  difficulty: string,
+  handlers: SSEHandler,
+) {
+  await consumeSSE(`${BASE}/practice/evaluate`, { session_id: sessionId, question, answer, difficulty }, handlers)
+}
+
+export async function getPracticeSummary(
+  sessionId: string,
+  qaPairs: object[],
+  handlers: SSEHandler,
+) {
+  await consumeSSE(`${BASE}/practice/summary`, { session_id: sessionId, qa_pairs: qaPairs }, handlers)
+}
+
+// ── Coding Practice ─────────────────────────────────────────────────
+
+export async function getCodeProblem(sessionId: string, difficulty = 'easy'): Promise<object | null> {
+  try {
+    const res = await fetch(`${BASE}/code-practice/problem`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, difficulty }),
+    })
+    const data = await res.json()
+    return data.problem ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function evaluateCode(
+  sessionId: string,
+  problemTitle: string,
+  problemDescription: string,
+  code: string,
+  language: string,
+  handlers: SSEHandler,
+) {
+  await consumeSSE(`${BASE}/code-practice/evaluate`, {
+    session_id: sessionId,
+    problem_title: problemTitle,
+    problem_description: problemDescription,
+    code,
+    language,
+  }, handlers)
+}
+
 export async function drillComponent(
   sessionId: string,
   componentId: string,
