@@ -3,7 +3,13 @@ from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, Asyn
 from sqlalchemy.orm import DeclarativeBase
 from config import settings
 
-engine = create_async_engine(settings.database_url, echo=False)
+# Auto-fix driver: Supabase gives postgresql:// but we need asyncpg
+_url = settings.database_url
+if _url.startswith("postgresql://"):
+    _url = _url.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+_connect_args = {"ssl": "require"} if "supabase" in _url else {}
+engine = create_async_engine(_url, echo=False, connect_args=_connect_args)
 async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
