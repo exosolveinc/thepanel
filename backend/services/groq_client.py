@@ -15,7 +15,7 @@ Candidate Resume:
 
 Job Description:
 {job_description}
-
+{instructions_block}
 Guidelines:
 - Tailor every answer to the candidate's background and the target role
 - Be direct — no fluff, no filler phrases like "Great question!"
@@ -81,7 +81,7 @@ Candidate Resume:
 
 Job Description:
 {job_description}
-
+{instructions_block}
 When asked to design a system, respond in TWO parts:
 
 PART 1 — Output ONLY a raw JSON object (no markdown fences) with this exact structure:
@@ -111,6 +111,12 @@ Separate with exactly: ---NARRATIVE---
 """
 
 
+def _instructions_block(session: Session) -> str:
+    if session.instructions:
+        return f"\nCustom Instructions from candidate:\n{session.instructions}\n"
+    return ""
+
+
 def _build_messages(session: Session, question: str, system: str) -> list[dict]:
     messages = [{"role": "system", "content": system}]
     messages.extend(session.history[-8:])
@@ -130,6 +136,7 @@ async def stream_basic_answer(session: Session, question: str, mode: str = "quic
     system = _BASE_SYSTEM.format(
         resume=session.resume_text,
         job_description=session.job_description,
+        instructions_block=_instructions_block(session),
     ) + mode_instruction
 
     messages = _build_messages(session, question, system)
@@ -156,6 +163,7 @@ async def stream_system_design(session: Session, question: str):
     system = _SYSTEM_DESIGN_SYSTEM.format(
         resume=session.resume_text,
         job_description=session.job_description,
+        instructions_block=_instructions_block(session),
     )
     messages = _build_messages(session, question, system)
 

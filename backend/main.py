@@ -1,8 +1,17 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routers import session, interview, deep_dive, arch_flow, practice, code_practice
+from database import create_tables
+from routers import session, interview, deep_dive, arch_flow, practice, code_practice, auth, library
 
-app = FastAPI(title="The Panel — Interview Assistant", version="1.0.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await create_tables()
+    yield
+
+
+app = FastAPI(title="The Panel — Interview Assistant", version="1.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -12,6 +21,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
+app.include_router(library.router)
 app.include_router(session.router)
 app.include_router(interview.router)
 app.include_router(deep_dive.router)

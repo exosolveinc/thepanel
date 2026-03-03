@@ -10,21 +10,11 @@ import {
   AlertCircle, Play,
 } from 'lucide-react'
 import { useSessionStore } from '../store/sessionStore'
-import { getCodeProblem, evaluateCode } from '../api/client'
+import { getCodeProblem, evaluateCode, type CodeProblem } from '../api/client'
 import { renderMarkdown } from '../utils/markdown'
 import clsx from 'clsx'
 
-interface Problem {
-  id: string
-  title: string
-  difficulty: 'easy' | 'medium' | 'hard'
-  description: string
-  examples: string[]
-  constraints: string[]
-  hint?: string
-  expected_time?: string
-  expected_space?: string
-}
+type Problem = CodeProblem
 
 type Lang = 'python' | 'java'
 type Phase = 'idle' | 'loading' | 'coding' | 'evaluating' | 'done'

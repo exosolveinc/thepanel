@@ -51,6 +51,10 @@ async def generate_questions(
         )
         categories = '"behavioral", "technical", "system-design", or "problem-solving"'
 
+    instructions_note = ""
+    if session.instructions:
+        instructions_note = f"\nCustom Instructions:\n{session.instructions[:500]}\n"
+
     prompt = f"""Generate {count} interview questions for this role.
 
 Job Description:
@@ -58,7 +62,7 @@ Job Description:
 
 Candidate Resume (background context):
 {session.resume_text[:600]}
-
+{instructions_note}
 Return ONLY a valid JSON array — no markdown, no extra text:
 [
   {{
@@ -134,11 +138,13 @@ async def stream_evaluate_answer(
     difficulty: str,
 ):
     """Async generator — streams evaluation tokens for a single answer."""
+    instructions_note = f"\nCustom Instructions:\n{session.instructions[:300]}\n" if session.instructions else ""
     user_msg = f"""Question ({difficulty}): {question}
 
 Candidate's Answer: {answer}
 
 Target Role: {session.job_description[:300]}
+{instructions_note}
 
 Evaluate this answer using exactly these headers:
 

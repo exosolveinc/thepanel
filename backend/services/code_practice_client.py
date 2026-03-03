@@ -19,10 +19,12 @@ _claude = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
 async def generate_problem(session: Session, difficulty: str = "easy") -> dict:
     """Returns a single coding problem dict (non-streaming via Groq)."""
     role_context = session.job_description[:400]
+    instructions_note = f"\nCustom Instructions:\n{session.instructions[:300]}\n" if session.instructions else ""
 
     prompt = f"""Generate a {difficulty} coding problem for a software engineering interview.
 
 Role context: {role_context}
+{instructions_note}
 
 Return ONLY a valid JSON object — no markdown, no extra text:
 {{

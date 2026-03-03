@@ -1,11 +1,15 @@
 """Architecture Flow SSE endpoint — streams Claude-generated stepwise architecture breakdowns."""
 import json
 import asyncio
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+from models.db_models import User
 from services.session_store import get_session
 from services.arch_flow_client import stream_arch_flow
+from services.auth import get_current_user
+from database import get_db
 
 router = APIRouter(prefix="/api", tags=["arch-flow"])
 
@@ -19,8 +23,8 @@ def _sse(event: str, data: str) -> str:
     return f"event: {event}\ndata: {data}\n\n"
 
 
-async def _generator(request: ArchFlowRequest):
-    session = get_session(request.session_id)
+async def _generator(request: ArchFlowRequest, db: AsyncSession):
+    session = await get_session(db, request.session_id)
     if not session:
         yield _sse("error", json.dumps({"message": "Session not found."}))
         return
@@ -42,9 +46,13 @@ async def _generator(request: ArchFlowRequest):
 
 
 @router.post("/arch-flow")
-async def arch_flow(request: ArchFlowRequest):
+async def arch_flow(
+    request: ArchFlowRequest,
+    _user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     return StreamingResponse(
-        _generator(request),
+        _generator(request, db),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

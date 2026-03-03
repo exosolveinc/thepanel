@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import type { SessionMessage } from '../api/client'
 
 export interface DesignComponent {
   id: string
@@ -85,6 +86,7 @@ interface SessionState {
   startArchFlow: (question: string) => void
   appendArchFlow: (question: string, text: string) => void
   finalizeArchFlow: (question: string) => void
+  loadSession: (id: string, meta: { resumeId: string; resumeTag: string; jdId: string; jdLabel: string }, msgs: SessionMessage[]) => void
   reset: () => void
 }
 
@@ -205,8 +207,55 @@ export const useSessionStore = create<SessionState>((set) => ({
       return { archFlows: { ...s.archFlows, [question]: { ...existing, streaming: false } } }
     }),
 
+  loadSession: (id, meta, msgs) => {
+    // Convert backend messages to frontend Message format
+    const messages: Message[] = msgs.map((m) => {
+      const msg: Message = {
+        id: m.id,
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+        streaming: false,
+      }
+      if (m.message_type) msg.type = m.message_type as Message['type']
+      if (m.mode) msg.mode = m.mode as Message['mode']
+      if (m.design_data) msg.design = m.design_data as unknown as DesignStructure
+      return msg
+    })
+
+    // Find the latest design from messages
+    let currentDesign: DesignStructure | null = null
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].design) {
+        currentDesign = messages[i].design!
+        break
+      }
+    }
+
+    set({
+      sessionId: id,
+      messages,
+      currentDesign,
+      isStreaming: false,
+      selectedComponent: null,
+      drillContent: '',
+      isDrilling: false,
+      drillDepth: 1,
+      breadcrumb: [],
+      resumeId: meta.resumeId,
+      resumeTag: meta.resumeTag,
+      jdId: meta.jdId,
+      jdLabel: meta.jdLabel,
+      liveInputText: '',
+      livePreview: '',
+      isLivePreviewing: false,
+      deepDives: {},
+      archFlows: {},
+    })
+  },
+
   reset: () =>
     set({
+      sessionId: null,
       messages: [],
       currentDesign: null,
       isStreaming: false,

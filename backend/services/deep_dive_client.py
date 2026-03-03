@@ -52,9 +52,12 @@ async def stream_deep_dive(session: Session, topic: str):
     """Async generator — yields text tokens for a Claude deep dive on `topic`."""
     resume_snippet = (session.resume_text or "")[:400]
 
+    instructions_note = f"Custom Instructions:\n{session.instructions[:300]}\n\n" if session.instructions else ""
+
     user_msg = (
         f"Generate a comprehensive deep-dive on: **{topic}**\n\n"
         f"Candidate background: {resume_snippet}\n\n"
+        f"{instructions_note}"
         "Be thorough, structured, and interview-ready. "
         "Include Mermaid diagrams wherever they aid understanding."
     )

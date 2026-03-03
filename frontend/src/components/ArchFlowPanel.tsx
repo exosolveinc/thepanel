@@ -126,10 +126,14 @@ export default function ArchFlowPanel({ onBack }: Props) {
 
   // Prefer system_design questions for default selection
   const designQuestions = useMemo(
-    () => messages.filter(m => m.role === 'assistant' && m.type === 'system_design').map((_, i) => {
-      const userMsgs = messages.filter(u => u.role === 'user')
-      return userMsgs[i]?.content
-    }).filter(Boolean) as string[],
+    () => messages.reduce<string[]>((acc, m, i) => {
+      if (m.role === 'assistant' && m.type === 'system_design') {
+        for (let j = i - 1; j >= 0; j--) {
+          if (messages[j].role === 'user') { acc.push(messages[j].content); break }
+        }
+      }
+      return acc
+    }, []),
     [messages],
   )
 

@@ -10,13 +10,17 @@ Event stream protocol:
 """
 import json
 import asyncio
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 from models.schemas import AskRequest, DrillRequest, AnswerMode
+from models.db_models import User
 from services.session_store import get_session, append_history
 from services.question_classifier import classify_question, is_coding_question
 from services.groq_client import stream_basic_answer, stream_system_design
 from services.anthropic_client import stream_drill_down
+from services.auth import get_current_user
+from database import get_db
 
 router = APIRouter(prefix="/api", tags=["interview"])
 
@@ -25,8 +29,8 @@ def _sse(event: str, data: str) -> str:
     return f"event: {event}\ndata: {data}\n\n"
 
 
-async def _ask_generator(request: AskRequest):
-    session = get_session(request.session_id)
+async def _ask_generator(request: AskRequest, db: AsyncSession):
+    session = await get_session(db, request.session_id)
     if not session:
         yield _sse("error", json.dumps({"message": "Session not found. Please restart."}))
         return
@@ -54,11 +58,13 @@ async def _ask_generator(request: AskRequest):
     await asyncio.sleep(0)
 
     full_answer = ""
+    design_data = None
 
     if q_type == "system_design":
         async for event_type, payload in stream_system_design(session, question):
             if event_type == "design":
-                session.current_design = json.loads(payload)
+                design_data = json.loads(payload)
+                session.current_design = design_data
                 yield _sse("design", payload)
                 await asyncio.sleep(0)
             else:
@@ -71,13 +77,13 @@ async def _ask_generator(request: AskRequest):
             yield _sse("token", json.dumps({"text": token}))
             await asyncio.sleep(0)
 
-    append_history(session, "user", question)
-    append_history(session, "assistant", full_answer)
+    await append_history(db, session, "user", question, message_type=q_type, mode=answer_mode)
+    await append_history(db, session, "assistant", full_answer, message_type=q_type, mode=answer_mode, design_data=design_data)
     yield _sse("done", "{}")
 
 
-async def _drill_generator(request: DrillRequest):
-    session = get_session(request.session_id)
+async def _drill_generator(request: DrillRequest, db: AsyncSession):
+    session = await get_session(db, request.session_id)
     if not session:
         yield _sse("error", json.dumps({"message": "Session not found."}))
         return
@@ -101,18 +107,26 @@ async def _drill_generator(request: DrillRequest):
 
 
 @router.post("/ask")
-async def ask_question(request: AskRequest):
+async def ask_question(
+    request: AskRequest,
+    _user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     return StreamingResponse(
-        _ask_generator(request),
+        _ask_generator(request, db),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
 @router.post("/drill")
-async def drill_component(request: DrillRequest):
+async def drill_component(
+    request: DrillRequest,
+    _user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     return StreamingResponse(
-        _drill_generator(request),
+        _drill_generator(request, db),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

@@ -14,6 +14,14 @@ class Settings(BaseSettings):
     # Session
     max_history_turns: int = 10
 
+    # Database
+    database_url: str = "postgresql+asyncpg://panel:panel_dev@localhost:5432/thepanel"
+
+    # Auth
+    jwt_secret_key: str = "dev-secret-change-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 1440  # 24 hours
+
     class Config:
         env_file = ".env"
 

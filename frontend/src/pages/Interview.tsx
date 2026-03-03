@@ -1,25 +1,24 @@
-import { useState, useCallback, useEffect } from 'react'
-import { RotateCcw, Focus, BookOpen, Layers, Mic, BarChart2, Code2 } from 'lucide-react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { Focus, BookOpen, Layers, Mic, BarChart2, Code2, LogOut, Loader2, ArrowLeft } from 'lucide-react'
 import AnswersPanel from '../components/AnswersPanel'
 import QueryBar from '../components/QueryBar'
-import DesignPanel from '../components/DesignPanel'
 import CodePanel from '../components/CodePanel'
-import DrillDrawer from '../components/DrillDrawer'
+import DesignPanel from '../components/DesignPanel'
 import CenterView from '../components/CenterView'
 import LiveVoicePanel from '../components/LiveVoicePanel'
 import DeepDivePanel from '../components/DeepDivePanel'
 import ArchFlowPanel from '../components/ArchFlowPanel'
 import PracticePanel from '../components/PracticePanel'
 import CodePracticePanel from '../components/CodePracticePanel'
-import { drillComponent } from '../api/client'
 import { useSessionStore, type DesignStructure, type DesignComponent } from '../store/sessionStore'
+import { useAuthStore } from '../store/authStore'
+import { loadSession, drillComponent } from '../api/client'
 import clsx from 'clsx'
 
-interface InterviewProps {
-  onReset: () => void
-}
-
 type View = 'main' | 'live' | 'deep' | 'arch' | 'behavioral' | 'technical' | 'code-practice'
+
+const VALID_TABS = new Set<string>(['main', 'live', 'deep', 'arch', 'behavioral', 'technical', 'code-practice'])
 
 const TABS: { id: View; label: string; icon: React.ReactNode; active: string; hover: string }[] = [
   { id: 'main',          label: 'Main',           icon: null,                        active: 'bg-zinc-700/70 text-zinc-200',     hover: 'hover:text-zinc-400' },
@@ -31,22 +30,116 @@ const TABS: { id: View; label: string; icon: React.ReactNode; active: string; ho
   { id: 'code-practice', label: 'Code',            icon: <Code2 size={10} />,          active: 'bg-cyan-600/25 text-cyan-300',     hover: 'hover:text-cyan-400' },
 ]
 
-export default function Interview({ onReset }: InterviewProps) {
-  const {
-    messages, currentDesign, selectedComponent,
-    startDrill, appendDrillContent, finalizeDrill, pushBreadcrumb, sessionId,
-  } = useSessionStore()
+export default function Interview() {
+  const navigate = useNavigate()
+  const { sessionId: urlSessionId, tab } = useParams<{ sessionId: string; tab?: string }>()
+  const { sessionId: storeSessionId, messages, currentDesign, reset, loadSession: loadSessionIntoStore } = useSessionStore()
+  const { logout } = useAuthStore()
 
-  const [view, setView]               = useState<View>('main')
+  const [loadingSession, setLoadingSession] = useState(false)
+  const loadAttempted = useRef(false)
+
+  // If URL has a session ID but store doesn't, load from API (e.g. page refresh / direct link)
+  useEffect(() => {
+    if (!urlSessionId) {
+      navigate('/', { replace: true })
+      return
+    }
+    // Store already has this session (navigated from Setup) — nothing to load
+    if (storeSessionId === urlSessionId) {
+      setLoadingSession(false)
+      return
+    }
+    if (loadAttempted.current) return
+    loadAttempted.current = true
+
+    let cancelled = false
+    setLoadingSession(true)
+    loadSession(urlSessionId)
+      .then((data) => {
+        if (cancelled) return
+        loadSessionIntoStore(
+          data.session_id,
+          {
+            resumeId: data.resume_id ?? '',
+            resumeTag: data.resume_tag ?? '',
+            jdId: data.jd_id ?? '',
+            jdLabel: data.jd_label ?? '',
+          },
+          data.messages,
+        )
+      })
+      .catch(() => {
+        if (cancelled) return
+        // Only redirect if the store still doesn't have this session
+        // (avoids race where Setup set the store but this API call was already in flight)
+        if (useSessionStore.getState().sessionId !== urlSessionId) {
+          navigate('/', { replace: true })
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSession(false)
+      })
+
+    return () => { cancelled = true }
+  }, [urlSessionId, storeSessionId, navigate, loadSessionIntoStore])
+
+  const view: View = (tab && VALID_TABS.has(tab) ? tab : 'main') as View
+
+  const setView = (v: View) => {
+    navigate(v === 'main' ? `/interview/${urlSessionId}` : `/interview/${urlSessionId}/${v}`, { replace: true })
+  }
+
   const [centerMode, setCenterMode]   = useState(false)
   const [localDesign, setLocalDesign] = useState<DesignStructure | null>(null)
+  const [selectedAnswerId, setSelectedAnswerId] = useState<string | null>(null)
 
-  const activeDesign  = currentDesign ?? localDesign
-  const hasMessages   = messages.length > 0
-  const lastAnswerMsg = [...messages].reverse().find(m => m.role === 'assistant' && m.content)
+  const hasMessages = messages.length > 0
+  const { isStreaming } = useSessionStore()
 
+  // Show artifact only for the explicitly selected answer (no fallback)
+  const selectedMsg = selectedAnswerId
+    ? messages.find(m => m.id === selectedAnswerId)
+    : null
+  const artifactMsg = selectedMsg ?? null
+  const effectiveAnswerId = selectedAnswerId
+
+  // Only show artifacts when an answer is explicitly selected
+  const hasCode = !!selectedAnswerId && !!artifactMsg?.content && /```\w*\n/.test(artifactMsg.content)
+  const activeDesign = selectedAnswerId ? (artifactMsg?.design ?? localDesign) : null
   const hasDesign = !!activeDesign
-  const hasCode   = !!lastAnswerMsg?.content && /```\w*\n/.test(lastAnswerMsg.content)
+  const hasArtifact = hasCode || hasDesign
+
+  // Auto-select the streaming answer when streaming starts, and the latest when it finishes
+  const prevStreaming = useRef(isStreaming)
+  useEffect(() => {
+    if (isStreaming && !prevStreaming.current) {
+      // Streaming just started — select the new answer so its artifact shows live
+      const latest = [...messages].reverse().find(m => m.role === 'assistant')
+      if (latest) setSelectedAnswerId(latest.id)
+    }
+    if (prevStreaming.current && !isStreaming) {
+      // Streaming finished — update selection to pick up final design/code
+      const latest = [...messages].reverse().find(m => m.role === 'assistant')
+      if (latest) {
+        setSelectedAnswerId(latest.id)
+        setLocalDesign(latest.design ?? null)
+      }
+    }
+    prevStreaming.current = isStreaming
+  }, [isStreaming, messages])
+
+  // When user clicks any Q&A pair — toggle: click again to hide artifact
+  const handleSelectAnswer = useCallback((answerId: string) => {
+    if (selectedAnswerId === answerId) {
+      setSelectedAnswerId(null)
+      setLocalDesign(null)
+    } else {
+      setSelectedAnswerId(answerId)
+      const msg = messages.find(m => m.id === answerId)
+      setLocalDesign(msg?.design ?? null)
+    }
+  }, [messages, selectedAnswerId])
 
   useEffect(() => {
     if (!currentDesign) setLocalDesign(null)
@@ -60,16 +153,50 @@ export default function Interview({ onReset }: InterviewProps) {
     setLocalDesign(null)
   }, [])
 
+  const { startDrill, appendDrillContent, finalizeDrill, pushBreadcrumb } = useSessionStore()
+
   const handleDrill = useCallback((component: DesignComponent) => {
-    if (!sessionId || !activeDesign) return
+    if (!storeSessionId || !activeDesign) return
     startDrill(component, 1)
     pushBreadcrumb(component.name)
-    drillComponent(sessionId, component.id, component.name, activeDesign.summary, 1, {
-      onToken: t => appendDrillContent(t),
-      onDone:  () => finalizeDrill(),
-      onError: msg => { appendDrillContent(`\n\n**Error:** ${msg}`); finalizeDrill() },
-    })
-  }, [sessionId, activeDesign, startDrill, pushBreadcrumb, appendDrillContent, finalizeDrill])
+    drillComponent(
+      storeSessionId,
+      component.id,
+      component.name,
+      activeDesign.title,
+      1,
+      {
+        onToken: (t) => appendDrillContent(t),
+        onDone: () => finalizeDrill(),
+        onError: () => finalizeDrill(),
+      },
+    )
+  }, [storeSessionId, activeDesign, startDrill, pushBreadcrumb, appendDrillContent, finalizeDrill])
+
+  const handleReset = () => {
+    reset()
+    navigate('/', { replace: true })
+  }
+
+  const handleLogout = () => {
+    reset()
+    logout()
+    navigate('/login', { replace: true })
+  }
+
+  // Show loading state while fetching session from API
+  if (loadingSession || (!storeSessionId && urlSessionId)) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-zinc-950">
+        <div className="flex items-center gap-3 text-zinc-500">
+          <Loader2 size={18} className="animate-spin" />
+          <span className="text-sm">Loading session…</span>
+        </div>
+      </div>
+    )
+  }
+
+  if (!storeSessionId) return null
 
   return (
     <div className="h-screen flex bg-zinc-950 overflow-hidden">
@@ -109,7 +236,7 @@ export default function Interview({ onReset }: InterviewProps) {
             )}
           </div>
 
-          <div className="flex items-center gap-0.5 shrink-0">
+          <div className="flex items-center gap-1 shrink-0">
             {hasMessages && view === 'main' && (
               <>
                 <button onClick={() => setCenterMode(true)} title="Focus mode"
@@ -119,9 +246,14 @@ export default function Interview({ onReset }: InterviewProps) {
                 <div className="w-px h-4 bg-zinc-800 mx-1" />
               </>
             )}
-            <button onClick={onReset} title="New session"
-              className="p-1.5 rounded-lg text-zinc-600 hover:text-zinc-200 hover:bg-zinc-800/60 transition-colors">
-              <RotateCcw size={14} />
+            <button onClick={handleReset}
+              className="flex items-center gap-1.5 text-[10px] font-medium text-zinc-500 hover:text-zinc-200 px-2.5 py-1.5 rounded-lg hover:bg-zinc-800/60 transition-colors">
+              <ArrowLeft size={12} />
+              End Session
+            </button>
+            <button onClick={handleLogout} title="Sign out"
+              className="p-1.5 rounded-lg text-zinc-600 hover:text-red-400 hover:bg-red-400/8 transition-colors">
+              <LogOut size={14} />
             </button>
           </div>
         </header>
@@ -176,7 +308,7 @@ export default function Interview({ onReset }: InterviewProps) {
             <div
               className={clsx(
                 'flex-1 flex flex-col min-h-0 overflow-hidden',
-                hasDesign || hasCode ? 'border-r border-zinc-800/50' : '',
+                hasArtifact ? 'border-r border-zinc-800/50' : '',
               )}
               style={{ minWidth: 260 }}
             >
@@ -188,41 +320,30 @@ export default function Interview({ onReset }: InterviewProps) {
                 />
               </div>
               <div className="flex-1 min-h-0 overflow-hidden">
-                <AnswersPanel />
+                <AnswersPanel
+                  selectedAnswerId={effectiveAnswerId}
+                  onSelectAnswer={handleSelectAnswer}
+                />
               </div>
             </div>
 
-            {/* Col 2: Design */}
-            {hasDesign && (
-              <div
-                className={clsx('flex-1 overflow-hidden min-h-0', hasCode ? 'border-r border-zinc-800/50' : '')}
-                style={{ minWidth: 220 }}
-              >
-                <DesignPanel
-                  key={selectedComponent ? 'drill-open' : 'drill-closed'}
-                  design={activeDesign!}
-                  onDrill={handleDrill}
-                />
+            {/* Col 2: Design diagram */}
+            {hasDesign && activeDesign && (
+              <div className="flex-1 overflow-hidden min-h-0" style={{ minWidth: 300 }}>
+                <DesignPanel design={activeDesign} onDrill={handleDrill} />
               </div>
             )}
 
             {/* Col 3: Code */}
-            {hasCode && lastAnswerMsg && (
+            {hasCode && artifactMsg && (
               <div className="flex-1 overflow-hidden min-h-0" style={{ minWidth: 220 }}>
-                <CodePanel content={lastAnswerMsg.content} />
+                <CodePanel content={artifactMsg.content} />
               </div>
             )}
 
           </div>
         )}
       </div>
-
-      {/* ── Drill — full-height right, only in main view ── */}
-      {view === 'main' && selectedComponent && (
-        <div className="w-[28%] min-w-[280px] max-w-[420px] shrink-0 border-l border-zinc-700/70 overflow-hidden">
-          <DrillDrawer inline />
-        </div>
-      )}
 
       {centerMode && <CenterView onClose={() => setCenterMode(false)} />}
     </div>

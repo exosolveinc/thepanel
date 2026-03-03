@@ -12,7 +12,7 @@ Candidate Resume:
 
 Job Description:
 {job_description}
-
+{instructions_block}
 The candidate is designing: {design_title}
 High-level context: {design_summary}
 
@@ -44,7 +44,7 @@ Candidate Resume:
 
 Job Description:
 {job_description}
-
+{instructions_block}
 Context: Designing {design_title} → {component_name}
 Sub-topic: {sub_component}
 
@@ -65,6 +65,12 @@ IMPORTANT — Structure your response EXACTLY like this:
 - Realistic implementation plan"""
 
 
+def _instructions_block(session: Session) -> str:
+    if session.instructions:
+        return f"\nCustom Instructions from candidate:\n{session.instructions}\n"
+    return ""
+
+
 async def stream_drill_down(
     session: Session,
     component_name: str,
@@ -80,6 +86,7 @@ async def stream_drill_down(
         system = _DEEP_DRILL_SYSTEM.format(
             resume=session.resume_text,
             job_description=session.job_description,
+            instructions_block=_instructions_block(session),
             design_title=design_title,
             component_name=component_name,
             sub_component=sub_component,
@@ -89,6 +96,7 @@ async def stream_drill_down(
         system = _DRILL_SYSTEM.format(
             resume=session.resume_text,
             job_description=session.job_description,
+            instructions_block=_instructions_block(session),
             design_title=design_title,
             design_summary=design_summary,
             component_name=component_name,

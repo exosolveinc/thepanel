@@ -59,10 +59,13 @@ async def stream_arch_flow(session: Session, question: str):
     """Async generator — yields text tokens for a stepwise architecture breakdown."""
     resume_snippet = (session.resume_text or "")[:300]
 
+    instructions_note = f"Custom Instructions:\n{session.instructions[:300]}\n\n" if session.instructions else ""
+
     user_msg = (
         f"Generate a complete stepwise architecture breakdown for:\n\n"
         f"**{question}**\n\n"
         f"Candidate background: {resume_snippet}\n\n"
+        f"{instructions_note}"
         "Show ALL steps from input to output with specific technology/AWS service choices. "
         "Include a complete Mermaid flow diagram of the entire architecture."
     )

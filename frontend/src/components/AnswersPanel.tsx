@@ -1,6 +1,7 @@
 /**
  * AnswersPanel — newest question always at top, right below the query bar.
  * No scroll management needed — new pairs appear at the very top.
+ * Click any Q&A pair to view its artifact (code / design) in the right panel.
  */
 import { Zap, Brain, Layout, Code2 } from 'lucide-react'
 import { useSessionStore } from '../store/sessionStore'
@@ -60,15 +61,16 @@ function extractKeywords(content: string): string[] {
 function usePairs() {
   const { messages } = useSessionStore()
   return messages.reduce<Array<{
-    id: string; question: string; qMode?: string
+    id: string; answerId: string; question: string; qMode?: string
     answer: string; aType?: string; aMode?: string
-    streaming?: boolean; hasDesign?: boolean; keywords: string[]
+    streaming?: boolean; hasDesign?: boolean; hasCode?: boolean; keywords: string[]
   }>>((acc, m, i) => {
     if (m.role !== 'user') return acc
     const next = messages[i + 1]
     if (!next || next.role !== 'assistant') return acc
     acc.push({
       id:        m.id,
+      answerId:  next.id,
       question:  m.content,
       qMode:     m.mode,
       answer:    next.content,
@@ -76,13 +78,19 @@ function usePairs() {
       aMode:     next.mode,
       streaming: next.streaming,
       hasDesign: !!next.design,
+      hasCode:   !!next.content && /```\w*\n/.test(next.content),
       keywords:  extractKeywords(next.content),
     })
     return acc
   }, [])
 }
 
-export default function AnswersPanel() {
+interface AnswersPanelProps {
+  selectedAnswerId?: string | null
+  onSelectAnswer?: (answerId: string) => void
+}
+
+export default function AnswersPanel({ selectedAnswerId, onSelectAnswer }: AnswersPanelProps) {
   const { isStreaming } = useSessionStore()
   const pairs = usePairs()
 
@@ -114,6 +122,8 @@ export default function AnswersPanel() {
 
         {reversed.map((pair) => {
           const meta = pair.aType ? (TYPE_META[pair.aType] ?? DEFAULT_META) : DEFAULT_META
+          const hasArtifact = !!(pair.hasDesign || pair.hasCode)
+          const isSelected = selectedAnswerId === pair.answerId
           return (
             <div key={pair.id}>
               {/* Question heading */}
@@ -122,8 +132,15 @@ export default function AnswersPanel() {
                 <p className="text-[12px] text-zinc-300 leading-snug font-semibold">{pair.question}</p>
               </div>
 
-              {/* Answer card */}
-              <div className={clsx('ml-3.5 rounded-xl border overflow-hidden', meta.card)}>
+              {/* Answer card — clickable to select/deselect artifact */}
+              <div
+                className={clsx(
+                  'ml-3.5 rounded-xl border overflow-hidden cursor-pointer',
+                  meta.card,
+                  isSelected && 'ring-1 ring-indigo-500/50',
+                )}
+                onClick={() => onSelectAnswer?.(pair.answerId)}
+              >
 
                 {/* Keyword chips */}
                 {pair.keywords.length > 0 && (
@@ -160,10 +177,40 @@ export default function AnswersPanel() {
                   {pair.streaming && pair.answer && (
                     <span className="inline-block w-1.5 h-3 bg-indigo-400 animate-pulse ml-0.5 align-middle" />
                   )}
-                  {pair.hasDesign && (
-                    <div className="mt-2.5 pt-2 border-t border-zinc-800/60 flex items-center gap-1.5 text-[9px] text-indigo-400/70">
-                      <Layout size={9} />
-                      <span>Diagram loaded in right panel</span>
+
+                  {/* Artifact buttons — explicit click targets */}
+                  {hasArtifact && onSelectAnswer && (
+                    <div className="mt-2.5 pt-2 border-t border-zinc-800/60">
+                      {pair.hasDesign && (
+                        <button
+                          type="button"
+                          onClick={() => onSelectAnswer(pair.answerId)}
+                          className={clsx(
+                            'flex items-center gap-1.5 text-[10px] font-medium px-2.5 py-1.5 rounded-lg transition-colors',
+                            isSelected
+                              ? 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30'
+                              : 'text-indigo-400/70 hover:text-indigo-300 hover:bg-indigo-500/10 border border-transparent',
+                          )}
+                        >
+                          <Layout size={10} />
+                          {isSelected ? 'Design showing' : 'View design'}
+                        </button>
+                      )}
+                      {pair.hasCode && (
+                        <button
+                          type="button"
+                          onClick={() => onSelectAnswer(pair.answerId)}
+                          className={clsx(
+                            'flex items-center gap-1.5 text-[10px] font-medium px-2.5 py-1.5 rounded-lg transition-colors',
+                            isSelected
+                              ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                              : 'text-emerald-400/60 hover:text-emerald-300 hover:bg-emerald-500/10 border border-transparent',
+                          )}
+                        >
+                          <Code2 size={10} />
+                          {isSelected ? 'Code showing' : 'View code'}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
