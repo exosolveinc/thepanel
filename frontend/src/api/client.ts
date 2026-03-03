@@ -4,7 +4,7 @@
  */
 import { useAuthStore } from '../store/authStore'
 
-const BASE = '/api'
+const BASE = import.meta.env.VITE_API_URL || '/api'
 
 function getAuthHeaders(): Record<string, string> {
   const token = useAuthStore.getState().token
