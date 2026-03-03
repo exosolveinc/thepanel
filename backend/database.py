@@ -8,8 +8,9 @@ _url = settings.database_url
 if _url.startswith("postgresql://"):
     _url = _url.replace("postgresql://", "postgresql+asyncpg://", 1)
 
-_connect_args = {"ssl": "require"} if "supabase" in _url else {}
-engine = create_async_engine(_url, echo=False, connect_args=_connect_args)
+_is_supabase = "supabase" in _url
+_connect_args = {"ssl": "require", "prepared_statement_cache_size": 0} if _is_supabase else {}
+engine = create_async_engine(_url, echo=False, connect_args=_connect_args, pool_pre_ping=True)
 async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
