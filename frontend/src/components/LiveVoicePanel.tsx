@@ -93,8 +93,8 @@ export default function LiveVoicePanel() {
     rec.maxAlternatives = 1
     recogRef.current    = rec
 
-    rec.onaudiostart = () => setAudioActive(true)
-    rec.onaudioend   = () => setAudioActive(false)
+    ;(rec as any).onaudiostart = () => setAudioActive(true)
+    ;(rec as any).onaudioend   = () => setAudioActive(false)
 
     rec.onresult = (e: SpeechRecognitionEvent) => {
       let interimText = ''

@@ -52,7 +52,7 @@ const QTYPES = [
   },
 ]
 
-function detectType(text: string) {
+export function detectType(text: string) {
   return QTYPES.find(q => q.test.test(text)) ?? null
 }
 
@@ -109,7 +109,6 @@ export default function HintPanel({ onPrefill }: HintPanelProps) {
 
   const abortRef = useRef<AbortController | null>(null)
   const isTyping = liveInputText.length >= 15
-  const detected = isTyping ? detectType(liveInputText) : null
 
   useEffect(() => {
     if (!liveInputText || liveInputText.length < 15) {

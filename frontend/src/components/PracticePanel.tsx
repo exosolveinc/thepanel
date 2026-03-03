@@ -266,8 +266,8 @@ export default function PracticePanel({ questionType }: PracticePanelProps) {
     rec.continuous = true; rec.interimResults = true; rec.lang = 'en-US'
     recogRef.current = rec
 
-    rec.onaudiostart = () => setAudioActive(true)
-    rec.onaudioend   = () => setAudioActive(false)
+    ;(rec as any).onaudiostart = () => setAudioActive(true)
+    ;(rec as any).onaudioend   = () => setAudioActive(false)
 
     rec.onresult = (e: SpeechRecognitionEvent) => {
       let it = '', ft = ''
@@ -329,7 +329,7 @@ export default function PracticePanel({ questionType }: PracticePanelProps) {
     const qs = await getPracticeQuestions(sessionId, 10, questionType)
     if (!qs.length) { setError('Failed to generate questions. Try again.'); setPhase('idle'); return }
 
-    setQuestions(qs)
+    setQuestions(qs as Question[])
     setPhase('answering')
   }
 

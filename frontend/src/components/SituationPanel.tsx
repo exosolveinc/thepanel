@@ -58,7 +58,7 @@ function EmptyState() {
 
 interface Concept { term: string; desc: string }
 
-function getHeadline(content: string): string {
+export function getHeadline(content: string): string {
   const tldr = content.match(/\*\*TL;DR\*\*\s*[—–-]\s*([^\n]+)/)
   if (tldr) return tldr[1].replace(/\*\*/g, '').trim().slice(0, 140)
   const kp = content.match(/\*\*Key Point:\*\*\s*([^\n*]+)/)
@@ -153,7 +153,7 @@ function ConceptFlow({ answer, question, typeLabel }: {
 
 /* ─── Design context ─────────────────────────────────────────────── */
 
-function buildFlow(design: DesignStructure) {
+export function buildFlow(design: DesignStructure) {
   const { components: comps, connections: conns } = design
   if (!comps.length) return []
   const targeted = new Set(conns.map(c => c.target))
