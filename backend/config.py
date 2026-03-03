@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql+asyncpg://panel:panel_dev@localhost:5432/thepanel"
 
+    # CORS
+    cors_origins: str = ""  # comma-separated, e.g. "https://thepanel.vercel.app,https://example.com"
+
     # Auth
     jwt_secret_key: str = "dev-secret-change-in-production"
     jwt_algorithm: str = "HS256"
