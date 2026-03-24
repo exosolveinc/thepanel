@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
-import { RotateCcw, Focus, BookOpen, Layers, Mic, BarChart2, Code2 } from 'lucide-react'
+import { RotateCcw, Focus, BookOpen, Layers, Mic, BarChart2, Code2, UserCheck, MessageSquare } from 'lucide-react'
 import AnswersPanel from '../components/AnswersPanel'
 import QueryBar from '../components/QueryBar'
 import DesignPanel from '../components/DesignPanel'
@@ -11,6 +11,8 @@ import DeepDivePanel from '../components/DeepDivePanel'
 import ArchFlowPanel from '../components/ArchFlowPanel'
 import PracticePanel from '../components/PracticePanel'
 import CodePracticePanel from '../components/CodePracticePanel'
+import HMVoicePanel, { type DocMeta } from '../components/HMVoicePanel'
+import HMTextPanel from '../components/HMTextPanel'
 import { drillComponent } from '../api/client'
 import { useSessionStore, type DesignStructure, type DesignComponent } from '../store/sessionStore'
 import clsx from 'clsx'
@@ -19,16 +21,18 @@ interface InterviewProps {
   onReset: () => void
 }
 
-type View = 'main' | 'live' | 'deep' | 'arch' | 'behavioral' | 'technical' | 'code-practice'
+type View = 'main' | 'live' | 'deep' | 'arch' | 'behavioral' | 'technical' | 'code-practice' | 'hmv' | 'hmt'
 
 const TABS: { id: View; label: string; icon: React.ReactNode; active: string; hover: string }[] = [
-  { id: 'main',          label: 'Main',           icon: null,                        active: 'bg-zinc-700/70 text-zinc-200',     hover: 'hover:text-zinc-400' },
-  { id: 'live',          label: 'Live',            icon: <Mic size={10} />,            active: 'bg-red-600/25 text-red-300',       hover: 'hover:text-red-400' },
-  { id: 'deep',          label: 'Deep Dive',       icon: <BookOpen size={10} />,       active: 'bg-indigo-600/30 text-indigo-300', hover: 'hover:text-indigo-400' },
-  { id: 'arch',          label: 'Architecture',    icon: <Layers size={10} />,         active: 'bg-amber-600/30 text-amber-300',   hover: 'hover:text-amber-400' },
-  { id: 'behavioral',    label: 'Behavioral',      icon: <BarChart2 size={10} />,      active: 'bg-violet-600/30 text-violet-300', hover: 'hover:text-violet-400' },
-  { id: 'technical',     label: 'Technical',       icon: <BarChart2 size={10} />,      active: 'bg-indigo-600/30 text-indigo-300', hover: 'hover:text-indigo-400' },
-  { id: 'code-practice', label: 'Code',            icon: <Code2 size={10} />,          active: 'bg-cyan-600/25 text-cyan-300',     hover: 'hover:text-cyan-400' },
+  { id: 'main',          label: 'Main',           icon: null,                           active: 'bg-zinc-700/70 text-zinc-200',     hover: 'hover:text-zinc-400' },
+  { id: 'live',          label: 'Live',            icon: <Mic size={10} />,              active: 'bg-red-600/25 text-red-300',       hover: 'hover:text-red-400' },
+  { id: 'deep',          label: 'Deep Dive',       icon: <BookOpen size={10} />,         active: 'bg-indigo-600/30 text-indigo-300', hover: 'hover:text-indigo-400' },
+  { id: 'arch',          label: 'Architecture',    icon: <Layers size={10} />,           active: 'bg-amber-600/30 text-amber-300',   hover: 'hover:text-amber-400' },
+  { id: 'behavioral',    label: 'Behavioral',      icon: <BarChart2 size={10} />,        active: 'bg-violet-600/30 text-violet-300', hover: 'hover:text-violet-400' },
+  { id: 'technical',     label: 'Technical',       icon: <BarChart2 size={10} />,        active: 'bg-indigo-600/30 text-indigo-300', hover: 'hover:text-indigo-400' },
+  { id: 'code-practice', label: 'Code',            icon: <Code2 size={10} />,            active: 'bg-cyan-600/25 text-cyan-300',     hover: 'hover:text-cyan-400' },
+  { id: 'hmv',           label: 'HMV',             icon: <UserCheck size={10} />,        active: 'bg-teal-600/25 text-teal-300',     hover: 'hover:text-teal-400' },
+  { id: 'hmt',           label: 'HMT',             icon: <MessageSquare size={10} />,    active: 'bg-sky-600/25 text-sky-300',       hover: 'hover:text-sky-400' },
 ]
 
 export default function Interview({ onReset }: InterviewProps) {
@@ -40,6 +44,7 @@ export default function Interview({ onReset }: InterviewProps) {
   const [view, setView]               = useState<View>('main')
   const [centerMode, setCenterMode]   = useState(false)
   const [localDesign, setLocalDesign] = useState<DesignStructure | null>(null)
+  const [hmDocs, setHmDocs]           = useState<DocMeta[]>([])
 
   const activeDesign  = currentDesign ?? localDesign
   const hasMessages   = messages.length > 0
@@ -153,6 +158,16 @@ export default function Interview({ onReset }: InterviewProps) {
             <CodePracticePanel />
           </div>
         )}
+
+        {/* ── Hiring Manager Voice tab — always mounted to preserve Q&A history ── */}
+        <div className={`flex-1 overflow-hidden min-h-0 ${view === 'hmv' ? '' : 'hidden'}`}>
+          <HMVoicePanel hmDocs={hmDocs} onDocAdded={meta => setHmDocs(p => [...p, meta])} />
+        </div>
+
+        {/* ── Hiring Manager Text tab — always mounted to preserve Q&A history ── */}
+        <div className={`flex-1 overflow-hidden min-h-0 ${view === 'hmt' ? '' : 'hidden'}`}>
+          <HMTextPanel hmDocs={hmDocs} onDocAdded={meta => setHmDocs(p => [...p, meta])} />
+        </div>
 
         {/* ── Deep Dive view ── */}
         {view === 'deep' && (

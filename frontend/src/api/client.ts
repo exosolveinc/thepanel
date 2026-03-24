@@ -113,6 +113,59 @@ export async function askQuestion(
   await consumeSSE(`${BASE}/ask`, { session_id: sessionId, question, mode }, handlers, signal)
 }
 
+// ── Hiring Manager Mode ──────────────────────────────────────────────
+
+export async function uploadHMDoc(
+  sessionId: string,
+  file: File,
+): Promise<{ name: string; char_count: number }> {
+  const form = new FormData()
+  form.append('session_id', sessionId)
+  form.append('file', file)
+  const res = await fetch(`${BASE}/hm/upload-doc`, { method: 'POST', body: form })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Upload failed' }))
+    throw new Error(err.detail ?? 'Failed to upload document')
+  }
+  return res.json()
+}
+
+export async function getHMShortcuts(
+  sessionId: string,
+): Promise<{ key: string; label: string; question: string }[]> {
+  try {
+    const res = await fetch(`${BASE}/hm/shortcuts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId }),
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    return data.shortcuts ?? []
+  } catch {
+    return []
+  }
+}
+
+export async function hmAsk(
+  sessionId: string,
+  question: string,
+  handlers: SSEHandler,
+  signal?: AbortSignal,
+) {
+  await consumeSSE(`${BASE}/hm/ask`, { session_id: sessionId, question, mode: 'quick' }, handlers, signal)
+}
+
+/** Live voice panel — bypasses question classifier for immediate first token. */
+export async function liveAsk(
+  sessionId: string,
+  question: string,
+  handlers: SSEHandler,
+  signal?: AbortSignal,
+) {
+  await consumeSSE(`${BASE}/live-ask`, { session_id: sessionId, question, mode: 'quick' }, handlers, signal)
+}
+
 export async function requestDeepDive(
   sessionId: string,
   topic: string,

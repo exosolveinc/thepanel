@@ -43,6 +43,10 @@ class SessionResponse(BaseModel):
     message: str
 
 
+class SessionRequest(BaseModel):
+    session_id: str
+
+
 class AskRequest(BaseModel):
     session_id: str
     question: str

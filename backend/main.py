@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routers import session, interview, deep_dive, arch_flow, practice, code_practice
+from routers import hm
 
 app = FastAPI(title="The Panel — Interview Assistant", version="1.0.0")
 
@@ -18,6 +19,7 @@ app.include_router(deep_dive.router)
 app.include_router(arch_flow.router)
 app.include_router(practice.router)
 app.include_router(code_practice.router)
+app.include_router(hm.router)
 
 
 @app.get("/health")

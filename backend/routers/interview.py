@@ -109,6 +109,43 @@ async def ask_question(request: AskRequest):
     )
 
 
+async def _live_ask_generator(request: AskRequest):
+    """Live voice panel — skips classification for immediate first-token response."""
+    session = get_session(request.session_id)
+    if not session:
+        yield _sse("error", json.dumps({"message": "Session not found. Please restart."}))
+        return
+
+    question = request.question.strip()
+    if not question:
+        yield _sse("error", json.dumps({"message": "Question cannot be empty."}))
+        return
+
+    full_answer = ""
+    try:
+        async for token in stream_basic_answer(session, question, mode="quick"):
+            full_answer += token
+            yield _sse("token", json.dumps({"text": token}))
+            await asyncio.sleep(0)
+    except Exception as exc:
+        yield _sse("error", json.dumps({"message": f"Stream error: {exc}"}))
+        return
+
+    if full_answer:
+        append_history(session, "user", question)
+        append_history(session, "assistant", full_answer)
+    yield _sse("done", "{}")
+
+
+@router.post("/live-ask")
+async def live_ask(request: AskRequest):
+    return StreamingResponse(
+        _live_ask_generator(request),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
 @router.post("/drill")
 async def drill_component(request: DrillRequest):
     return StreamingResponse(

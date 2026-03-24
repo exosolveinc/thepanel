@@ -10,6 +10,7 @@ class Session:
     job_description: str
     history: list[dict] = field(default_factory=list)  # [{role, content}]
     current_design: dict | None = None  # Latest system design structure
+    project_docs: list[str] = field(default_factory=list)  # Extracted text from HM project PDFs
 
 
 _store: dict[str, Session] = {}
