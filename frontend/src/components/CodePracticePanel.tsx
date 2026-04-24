@@ -128,7 +128,7 @@ export default function CodePracticePanel() {
     setPhase('loading')
     setEvalContent(''); setShowHint(false)
 
-    const result = await getCodeProblem(sessionId, difficulty)
+    const result = await getCodeProblem(sessionId, difficulty) as Problem | null
     if (!result) { setError('Failed to generate problem. Try again.'); setPhase('idle'); return }
 
     setProblem(result)

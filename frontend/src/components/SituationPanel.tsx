@@ -58,16 +58,6 @@ function EmptyState() {
 
 interface Concept { term: string; desc: string }
 
-function getHeadline(content: string): string {
-  const tldr = content.match(/\*\*TL;DR\*\*\s*[—–-]\s*([^\n]+)/)
-  if (tldr) return tldr[1].replace(/\*\*/g, '').trim().slice(0, 140)
-  const kp = content.match(/\*\*Key Point:\*\*\s*([^\n*]+)/)
-  if (kp) return kp[1].trim().slice(0, 140)
-  // first non-empty, non-heading line
-  const first = content.split('\n').find(l => l.trim() && !l.startsWith('#') && !l.startsWith('**Key'))
-  return first?.replace(/\*\*/g, '').trim().slice(0, 140) ?? ''
-}
-
 function extractConcepts(content: string): Concept[] {
   const seen = new Set<string>()
   const out: Concept[] = []
@@ -152,25 +142,6 @@ function ConceptFlow({ answer, question, typeLabel }: {
 }
 
 /* ─── Design context ─────────────────────────────────────────────── */
-
-function buildFlow(design: DesignStructure) {
-  const { components: comps, connections: conns } = design
-  if (!comps.length) return []
-  const targeted = new Set(conns.map(c => c.target))
-  const start    = comps.find(c => !targeted.has(c.id)) ?? comps[0]
-  const path: Array<{ name: string; label?: string }> = [{ name: start.name }]
-  const visited  = new Set([start.id])
-  let cur        = start.id
-  for (let i = 0; i < 6; i++) {
-    const edge = conns.find(c => c.source === cur && !visited.has(c.target))
-    if (!edge) break
-    const next = comps.find(c => c.id === edge.target)
-    if (!next) break
-    path.push({ name: next.name, label: edge.label })
-    visited.add(next.id); cur = next.id
-  }
-  return path
-}
 
 function DesignContext({ design }: { design: DesignStructure }) {
   const comps = design.components

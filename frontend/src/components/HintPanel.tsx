@@ -11,51 +11,6 @@ import { useSessionStore } from '../store/sessionStore'
 import { askQuestion } from '../api/client'
 import { renderMarkdown } from '../utils/markdown'
 
-/* ─── Question-type detector ──────────────────────────────────────── */
-
-const QTYPES = [
-  {
-    test: /design|architect|scale|distribut|system|microservice|load bal/i,
-    label: 'System Design', short: 'Design',
-    color: {
-      text: 'text-indigo-300', bg: 'bg-indigo-950/60', border: 'border-indigo-600/40',
-      dot: 'bg-indigo-400', tag: 'bg-indigo-900/40 text-indigo-400 border-indigo-700/40',
-    },
-    topics: ['Scale', 'Availability', 'Consistency', 'APIs', 'Bottlenecks'],
-  },
-  {
-    test: /tell me|time when|example of|describe when|give me a situation|walk me through|most challenging|conflict|leadership/i,
-    label: 'Behavioral', short: 'STAR',
-    color: {
-      text: 'text-amber-300', bg: 'bg-amber-950/50', border: 'border-amber-600/35',
-      dot: 'bg-amber-400', tag: 'bg-amber-900/30 text-amber-400 border-amber-700/40',
-    },
-    topics: ['Situation', 'Task', 'Action', 'Result', 'Impact'],
-  },
-  {
-    test: /algorithm|sort|tree|graph|complex|dynamic programming|binary|recursion|implement|leetcode/i,
-    label: 'Algorithms', short: 'DSA',
-    color: {
-      text: 'text-emerald-300', bg: 'bg-emerald-950/50', border: 'border-emerald-600/35',
-      dot: 'bg-emerald-400', tag: 'bg-emerald-900/30 text-emerald-400 border-emerald-700/40',
-    },
-    topics: ['Time O()', 'Space O()', 'Edge Cases', 'Optimize', 'Walk-through'],
-  },
-  {
-    test: /explain|how does|what is|difference|compare|define|why does|when would/i,
-    label: 'Concepts', short: 'Theory',
-    color: {
-      text: 'text-sky-300', bg: 'bg-sky-950/50', border: 'border-sky-600/35',
-      dot: 'bg-sky-400', tag: 'bg-sky-900/30 text-sky-400 border-sky-700/40',
-    },
-    topics: ['Definition', 'Trade-offs', 'Use Cases', 'Examples', 'Internals'],
-  },
-]
-
-function detectType(text: string) {
-  return QTYPES.find(q => q.test.test(text)) ?? null
-}
-
 /* ─── Category cards (empty state) ────────────────────────────────── */
 
 const CATS = [
@@ -109,7 +64,6 @@ export default function HintPanel({ onPrefill }: HintPanelProps) {
 
   const abortRef = useRef<AbortController | null>(null)
   const isTyping = liveInputText.length >= 15
-  const detected = isTyping ? detectType(liveInputText) : null
 
   useEffect(() => {
     if (!liveInputText || liveInputText.length < 15) {
