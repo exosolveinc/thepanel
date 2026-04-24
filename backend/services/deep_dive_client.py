@@ -2,7 +2,10 @@
 Deep-dive content generator — Claude Sonnet produces a thorough structured
 breakdown of any interview topic, complete with Mermaid diagrams.
 """
+import asyncio
+
 import anthropic
+
 from config import settings
 from services.session_store import Session
 
@@ -59,11 +62,12 @@ async def stream_deep_dive(session: Session, topic: str):
         "Include Mermaid diagrams wherever they aid understanding."
     )
 
-    async with _client.messages.stream(
-        model=settings.claude_sonnet_model,
-        max_tokens=3500,
-        system=_SYSTEM,
-        messages=[{"role": "user", "content": user_msg}],
-    ) as stream:
-        async for text in stream.text_stream:
-            yield text
+    async with asyncio.timeout(settings.llm_total_timeout_seconds):
+        async with _client.messages.stream(
+            model=settings.claude_sonnet_model,
+            max_tokens=3500,
+            system=_SYSTEM,
+            messages=[{"role": "user", "content": user_msg}],
+        ) as stream:
+            async for text in stream.text_stream:
+                yield text

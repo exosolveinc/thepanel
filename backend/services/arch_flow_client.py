@@ -2,7 +2,10 @@
 Architecture Flow generator — Claude produces a stepwise visual breakdown
 of system design questions with Mermaid diagrams and per-step details.
 """
+import asyncio
+
 import anthropic
+
 from config import settings
 from services.session_store import Session
 
@@ -67,11 +70,12 @@ async def stream_arch_flow(session: Session, question: str):
         "Include a complete Mermaid flow diagram of the entire architecture."
     )
 
-    async with _client.messages.stream(
-        model=settings.claude_sonnet_model,
-        max_tokens=4000,
-        system=_SYSTEM,
-        messages=[{"role": "user", "content": user_msg}],
-    ) as stream:
-        async for text in stream.text_stream:
-            yield text
+    async with asyncio.timeout(settings.llm_total_timeout_seconds):
+        async with _client.messages.stream(
+            model=settings.claude_sonnet_model,
+            max_tokens=4000,
+            system=_SYSTEM,
+            messages=[{"role": "user", "content": user_msg}],
+        ) as stream:
+            async for text in stream.text_stream:
+                yield text

@@ -1,8 +1,11 @@
 """Fast question classification using Groq's small model (~50ms)."""
 from groq import AsyncGroq
+
 from config import settings
+from utils.logging import get_logger
 
 _client = AsyncGroq(api_key=settings.groq_api_key)
+logger = get_logger(__name__)
 
 _CLASSIFY_PROMPT = """Classify this interview question into exactly one category:
 - basic: Factual/conceptual (what is X, explain Y, how does Z work, difference between A and B)
@@ -35,15 +38,19 @@ def is_coding_question(question: str) -> bool:
 
 
 async def classify_question(question: str) -> str:
-    response = await _client.chat.completions.create(
-        model=settings.groq_fast_model,
-        messages=[{"role": "user", "content": _CLASSIFY_PROMPT.format(question=question)}],
-        max_tokens=10,
-        temperature=0,
-    )
-    raw = response.choices[0].message.content.strip().lower()
-    if "system_design" in raw or "system design" in raw:
-        return "system_design"
-    if "behavioral" in raw:
-        return "behavioral"
-    return "basic"
+    try:
+        response = await _client.chat.completions.create(
+            model=settings.groq_fast_model,
+            messages=[{"role": "user", "content": _CLASSIFY_PROMPT.format(question=question)}],
+            max_tokens=10,
+            temperature=0,
+        )
+        raw = response.choices[0].message.content.strip().lower()
+        if "system_design" in raw or "system design" in raw:
+            return "system_design"
+        if "behavioral" in raw:
+            return "behavioral"
+        return "basic"
+    except Exception:
+        logger.warning("classify_question failed; defaulting to 'basic'", exc_info=True)
+        return "basic"  # Safe fallback — basic Q&A mode

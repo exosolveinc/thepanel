@@ -12,13 +12,14 @@ import clsx from 'clsx'
 type AnswerMode = 'quick' | 'long' | 'design'
 
 interface QueryBarProps {
-  onDesignReady:  (design: DesignStructure) => void
-  onClearDesign?: () => void
-  prefill?:       string
-  compact?:       boolean  // fills parent, no centering wrapper
+  onDesignReady:     (design: DesignStructure) => void
+  onClearDesign?:    () => void
+  prefill?:          string
+  onPrefillConsumed?: () => void
+  compact?:          boolean  // fills parent, no centering wrapper
 }
 
-export default function QueryBar({ onDesignReady, onClearDesign, prefill, compact }: QueryBarProps) {
+export default function QueryBar({ onDesignReady, onClearDesign, prefill, onPrefillConsumed, compact }: QueryBarProps) {
   const {
     sessionId, isStreaming,
     addMessage, appendToLastMessage, setLastMessageDesign, finalizeLastMessage, setLiveInput,
@@ -29,12 +30,16 @@ export default function QueryBar({ onDesignReady, onClearDesign, prefill, compac
   const [listening, setListening]   = useState(false)
   const [speechError, setSpeechError] = useState('')
 
-  const recogRef = useRef<SpeechRecognition | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const recogRef    = useRef<SpeechRecognition | null>(null)
+  const inputRef    = useRef<HTMLInputElement>(null)
+  const sendingRef  = useRef(false)
 
   useEffect(() => {
-    if (prefill) { setInput(prefill); setLiveInput(prefill); inputRef.current?.focus() }
-  }, [prefill, setLiveInput])
+    if (prefill) {
+      setInput(prefill); setLiveInput(prefill); inputRef.current?.focus()
+      onPrefillConsumed?.()
+    }
+  }, [prefill, setLiveInput, onPrefillConsumed])
 
   const startListening = useCallback(() => {
     setSpeechError('')
@@ -55,7 +60,8 @@ export default function QueryBar({ onDesignReady, onClearDesign, prefill, compac
 
   const handleSend = useCallback(async (mode: AnswerMode) => {
     const q = input.trim()
-    if (!q || !sessionId || isStreaming) return
+    if (!q || !sessionId || isStreaming || sendingRef.current) return
+    sendingRef.current = true
     setInput(''); setLiveInput(''); setActiveMode(mode)
     if (mode !== 'design') { onClearDesign?.(); useSessionStore.setState({ currentDesign: null }) }
 
@@ -76,7 +82,7 @@ export default function QueryBar({ onDesignReady, onClearDesign, prefill, compac
       },
       onToken: text => appendToLastMessage(text),
       onDone: () => {
-        finalizeLastMessage(); setActiveMode(null)
+        finalizeLastMessage(); setActiveMode(null); sendingRef.current = false
         useSessionStore.setState(s => {
           const msgs = [...s.messages]
           if (msgs.length > 0 && !msgs[msgs.length - 1].type)
@@ -84,7 +90,7 @@ export default function QueryBar({ onDesignReady, onClearDesign, prefill, compac
           return { messages: msgs }
         })
       },
-      onError: msg => { appendToLastMessage(`\n\n**Error:** ${msg}`); finalizeLastMessage(); setActiveMode(null) },
+      onError: msg => { appendToLastMessage(`\n\n**Error:** ${msg}`); finalizeLastMessage(); setActiveMode(null); sendingRef.current = false },
     })
   }, [input, sessionId, isStreaming, addMessage, appendToLastMessage, setLastMessageDesign, finalizeLastMessage, onDesignReady, onClearDesign, setLiveInput])
 

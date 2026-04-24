@@ -2,8 +2,10 @@
  * AnswersPanel — newest question always at top, right below the query bar.
  * No scroll management needed — new pairs appear at the very top.
  */
+import { useState, useEffect, useRef } from 'react'
 import { Zap, Brain, Layout, Code2 } from 'lucide-react'
 import { useSessionStore } from '../store/sessionStore'
+import { getFollowUps } from '../api/client'
 import { renderMarkdown } from '../utils/markdown'
 import clsx from 'clsx'
 
@@ -82,9 +84,31 @@ function usePairs() {
   }, [])
 }
 
-export default function AnswersPanel() {
-  const { isStreaming } = useSessionStore()
+interface AnswersPanelProps {
+  onFollowUp?: (q: string) => void
+}
+
+export default function AnswersPanel({ onFollowUp }: AnswersPanelProps) {
+  const { isStreaming, sessionId } = useSessionStore()
   const pairs = usePairs()
+
+  // Follow-up chips: keyed by pair ID so we only fetch once per answer
+  const [followUpsMap, setFollowUpsMap] = useState<Record<string, string[]>>({})
+  const fetchedIds = useRef<Set<string>>(new Set())
+
+  // Newest pair — watch for streaming → done transition
+  const top = pairs.length > 0 ? pairs[pairs.length - 1] : null
+
+  useEffect(() => {
+    if (!top || top.streaming || !top.answer || !sessionId) return
+    if (fetchedIds.current.has(top.id)) return
+    fetchedIds.current.add(top.id)
+    const ctrl = new AbortController()
+    getFollowUps(sessionId, top.question, top.answer, ctrl.signal).then(qs => {
+      if (qs.length) setFollowUpsMap(prev => ({ ...prev, [top.id]: qs }))
+    })
+    return () => ctrl.abort()
+  }, [top?.id, top?.streaming, top?.answer, sessionId])
 
   // Newest first — pops up right below the query bar without any scrolling
   const reversed = [...pairs].reverse()
@@ -168,6 +192,21 @@ export default function AnswersPanel() {
                   )}
                 </div>
               </div>
+
+              {/* Follow-up suggestions — shown only for the newest completed answer */}
+              {!pair.streaming && onFollowUp && followUpsMap[pair.id]?.length > 0 && pair.id === reversed[0]?.id && (
+                <div className="ml-3.5 mt-2 flex flex-wrap gap-1.5">
+                  {followUpsMap[pair.id].map((q, i) => (
+                    <button
+                      key={i}
+                      onClick={() => onFollowUp(q)}
+                      className="text-[10px] text-zinc-400 border border-zinc-700/60 hover:border-zinc-500 hover:text-zinc-200 rounded-full px-2.5 py-1 transition-colors bg-zinc-900/50 hover:bg-zinc-800/50 leading-none"
+                    >
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )
         })}

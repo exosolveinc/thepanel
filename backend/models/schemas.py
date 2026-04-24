@@ -1,6 +1,11 @@
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
+from typing import Optional, Literal
 from enum import Enum
+
+
+class ErrorResponse(BaseModel):
+    message: str
+    code: Optional[str] = None
 
 
 class QuestionType(str, Enum):
@@ -44,18 +49,67 @@ class SessionResponse(BaseModel):
 
 
 class SessionRequest(BaseModel):
-    session_id: str
+    session_id: str = Field(..., min_length=1)
 
 
 class AskRequest(BaseModel):
-    session_id: str
-    question: str
+    session_id: str = Field(..., min_length=1)
+    question: str = Field(..., min_length=1, max_length=10000)
     mode: AnswerMode = AnswerMode.QUICK
 
 
 class DrillRequest(BaseModel):
-    session_id: str
-    component_id: str
-    component_name: str
-    context: str
-    depth: int = 1
+    session_id: str = Field(..., min_length=1)
+    component_id: str = Field(..., min_length=1)
+    component_name: str = Field(..., min_length=1)
+    context: str = Field(default="")
+    depth: int = Field(default=1, ge=1, le=5)
+
+
+class FollowUpsRequest(BaseModel):
+    session_id: str = Field(..., min_length=1)
+    question: str = Field(..., min_length=1, max_length=10000)
+    answer: str = Field(..., min_length=1, max_length=20000)
+
+
+# ── Practice / Coding / Deep-dive / Arch-flow request schemas ──────────
+
+class QuestionsRequest(BaseModel):
+    session_id: str = Field(..., min_length=1)
+    count: int = Field(default=10, ge=1, le=50)
+    question_type: Literal["behavioral", "technical", "mixed"] = "mixed"
+
+
+class EvaluateRequest(BaseModel):
+    session_id: str = Field(..., min_length=1)
+    question: str = Field(..., min_length=1, max_length=10000)
+    answer: str = Field(..., min_length=1, max_length=20000)
+    difficulty: str = Field(default="medium", max_length=32)
+
+
+class SummaryRequest(BaseModel):
+    session_id: str = Field(..., min_length=1)
+    qa_pairs: list[dict] = Field(..., max_length=100)
+
+
+class ProblemRequest(BaseModel):
+    session_id: str = Field(..., min_length=1)
+    difficulty: str = Field(default="easy", max_length=32)
+
+
+class EvaluateCodeRequest(BaseModel):
+    session_id: str = Field(..., min_length=1)
+    problem_title: str = Field(..., min_length=1, max_length=200)
+    problem_description: str = Field(..., min_length=1, max_length=5000)
+    code: str = Field(..., min_length=1, max_length=50_000)
+    language: str = Field(default="python", max_length=20)
+
+
+class DeepDiveRequest(BaseModel):
+    session_id: str = Field(..., min_length=1)
+    topic: str = Field(..., min_length=1, max_length=10000)
+
+
+class ArchFlowRequest(BaseModel):
+    session_id: str = Field(..., min_length=1)
+    question: str = Field(..., min_length=1, max_length=10000)

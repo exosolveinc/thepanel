@@ -3,15 +3,20 @@ Coding Practice client.
 - generate_problem(): Groq fast JSON — one coding problem for given difficulty
 - stream_evaluate_code(): Claude streaming — detailed code review + score
 """
+import asyncio
 import json
 import re
-from groq import AsyncGroq
+
 import anthropic
+from groq import AsyncGroq
+
 from config import settings
 from services.session_store import Session
+from utils.logging import get_logger
 
 _groq   = AsyncGroq(api_key=settings.groq_api_key)
 _claude = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+logger = get_logger(__name__)
 
 
 # ── Problem generation ────────────────────────────────────────────────
@@ -170,11 +175,12 @@ Does this solve the problem? Walk through the logic. Note any bugs or cases wher
 [Cleaner or more optimal solution — only if meaningfully different]
 ```"""
 
-    async with _claude.messages.stream(
-        model=settings.claude_sonnet_model,
-        max_tokens=800,
-        system=_CODE_EVAL_SYSTEM,
-        messages=[{"role": "user", "content": user_msg}],
-    ) as stream:
-        async for text in stream.text_stream:
-            yield text
+    async with asyncio.timeout(settings.llm_total_timeout_seconds):
+        async with _claude.messages.stream(
+            model=settings.claude_sonnet_model,
+            max_tokens=800,
+            system=_CODE_EVAL_SYSTEM,
+            messages=[{"role": "user", "content": user_msg}],
+        ) as stream:
+            async for text in stream.text_stream:
+                yield text

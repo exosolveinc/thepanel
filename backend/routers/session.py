@@ -1,7 +1,7 @@
 from fastapi import APIRouter, File, Form, UploadFile, HTTPException
 from models.schemas import SessionResponse
 from services.session_store import create_session
-from services.pdf_parser import extract_text_from_pdf
+from services.pdf_parser import aextract_text_from_pdf
 
 router = APIRouter(prefix="/api/session", tags=["session"])
 
@@ -19,7 +19,7 @@ async def create_interview_session(
         raise HTTPException(status_code=400, detail="Resume PDF must be under 10MB.")
 
     try:
-        resume_text = extract_text_from_pdf(file_bytes)
+        resume_text = await aextract_text_from_pdf(file_bytes)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
 

@@ -1,9 +1,15 @@
 """Anthropic Claude async client — component drill-down and deep technical dives."""
+import asyncio
+
 import anthropic
+
 from config import settings
 from services.session_store import Session
 
-_client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+_client = anthropic.AsyncAnthropic(
+    api_key=settings.anthropic_api_key,
+    timeout=60.0,
+)
 
 _DRILL_SYSTEM = """You are The Panel — a principal engineer and architect helping a candidate in a technical interview.
 
@@ -95,11 +101,12 @@ async def stream_drill_down(
         )
         user_msg = f"Deep dive on {component_name}"
 
-    async with _client.messages.stream(
-        model=model,
-        max_tokens=2048,
-        system=system,
-        messages=[{"role": "user", "content": user_msg}],
-    ) as stream:
-        async for text in stream.text_stream:
-            yield text
+    async with asyncio.timeout(settings.llm_total_timeout_seconds):
+        async with _client.messages.stream(
+            model=model,
+            max_tokens=2048,
+            system=system,
+            messages=[{"role": "user", "content": user_msg}],
+        ) as stream:
+            async for text in stream.text_stream:
+                yield text

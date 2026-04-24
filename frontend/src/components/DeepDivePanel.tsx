@@ -9,37 +9,28 @@ import { ArrowLeft, BookOpen, Loader2, ChevronRight, RefreshCw } from 'lucide-re
 import { useSessionStore } from '../store/sessionStore'
 import { requestDeepDive } from '../api/client'
 import { renderMarkdown } from '../utils/markdown'
+import { renderSafeMermaid, configureMermaid } from '../utils/mermaid'
 import clsx from 'clsx'
 
-/* ── Mermaid renderer ────────────────────────────────────────────── */
+/* ── Mermaid renderer (sanitized SVG) ────────────────────────────── */
 
-let _mermaidReady = false
-let _mermaidInit: Promise<void> | null = null
+configureMermaid({
+  themeVariables: {
+    background:         '#09090b',
+    primaryColor:       '#6366f1',
+    primaryTextColor:   '#e4e4e7',
+    primaryBorderColor: '#3f3f46',
+    lineColor:          '#52525b',
+    secondaryColor:     '#18181b',
+    tertiaryColor:      '#27272a',
+    edgeLabelBackground:'#18181b',
+    clusterBkg:         '#18181b',
+    titleColor:         '#a1a1aa',
+  },
+})
 
-async function initMermaid() {
-  if (_mermaidReady) return
-  if (_mermaidInit) return _mermaidInit
-  _mermaidInit = import('mermaid').then(m => {
-    m.default.initialize({
-      startOnLoad: false,
-      theme: 'dark',
-      themeVariables: {
-        background:        '#09090b',
-        primaryColor:      '#6366f1',
-        primaryTextColor:  '#e4e4e7',
-        primaryBorderColor:'#3f3f46',
-        lineColor:         '#52525b',
-        secondaryColor:    '#18181b',
-        tertiaryColor:     '#27272a',
-        edgeLabelBackground: '#18181b',
-        clusterBkg:        '#18181b',
-        titleColor:        '#a1a1aa',
-      },
-      flowchart: { htmlLabels: true, curve: 'basis' },
-    })
-    _mermaidReady = true
-  })
-  return _mermaidInit
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
 function MermaidBlock({ code }: { code: string }) {
@@ -47,18 +38,16 @@ function MermaidBlock({ code }: { code: string }) {
 
   useEffect(() => {
     if (!ref.current) return
+    let cancelled = false
     const id = `md-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-    initMermaid().then(async () => {
-      const { default: mermaid } = await import('mermaid')
-      try {
-        const { svg } = await mermaid.render(id, code.trim())
-        if (ref.current) ref.current.innerHTML = svg
-      } catch {
-        if (ref.current) {
-          ref.current.innerHTML = `<pre class="text-[10px] text-zinc-600 p-3 overflow-x-auto">${code}</pre>`
+    renderSafeMermaid(id, code)
+      .then(svg => { if (!cancelled && ref.current) ref.current.innerHTML = svg })
+      .catch(() => {
+        if (!cancelled && ref.current) {
+          ref.current.innerHTML = `<pre class="text-[10px] text-zinc-600 p-3 overflow-x-auto">${escapeHtml(code)}</pre>`
         }
-      }
-    })
+      })
+    return () => { cancelled = true }
   }, [code])
 
   return (

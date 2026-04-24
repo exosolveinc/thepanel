@@ -90,6 +90,19 @@ interface SessionState {
 
 const makeId = () => Math.random().toString(36).slice(2)
 
+// Cap how many cached deep-dive / arch-flow entries we hold per session.
+// When inserting a new key past this limit, drop the oldest (insertion-order LRU).
+const MAX_CACHED_ENTRIES = 50
+
+function capRecord<V>(record: Record<string, V>): Record<string, V> {
+  const keys = Object.keys(record)
+  if (keys.length <= MAX_CACHED_ENTRIES) return record
+  const drop = keys.length - MAX_CACHED_ENTRIES
+  const trimmed: Record<string, V> = {}
+  for (let i = drop; i < keys.length; i++) trimmed[keys[i]] = record[keys[i]]
+  return trimmed
+}
+
 export const useSessionStore = create<SessionState>((set) => ({
   sessionId: null,
   messages: [],
@@ -174,7 +187,7 @@ export const useSessionStore = create<SessionState>((set) => ({
   setIsLivePreviewing: (v) => set({ isLivePreviewing: v }),
 
   startDeepDive: (topic) =>
-    set((s) => ({ deepDives: { ...s.deepDives, [topic]: { content: '', streaming: true } } })),
+    set((s) => ({ deepDives: capRecord({ ...s.deepDives, [topic]: { content: '', streaming: true } }) })),
 
   appendDeepDive: (topic, text) =>
     set((s) => {
@@ -190,7 +203,7 @@ export const useSessionStore = create<SessionState>((set) => ({
     }),
 
   startArchFlow: (question) =>
-    set((s) => ({ archFlows: { ...s.archFlows, [question]: { content: '', streaming: true } } })),
+    set((s) => ({ archFlows: capRecord({ ...s.archFlows, [question]: { content: '', streaming: true } }) })),
 
   appendArchFlow: (question, text) =>
     set((s) => {

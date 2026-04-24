@@ -1,9 +1,44 @@
 /**
  * API client — all backend communication lives here.
- * Uses EventSource-compatible fetch for SSE streams.
+ * Uses fetch + ReadableStream for SSE consumption.
  */
 
 const BASE = '/api'
+
+export class ApiError extends Error {
+  status: number
+  code?: string
+  constructor(message: string, status: number, code?: string) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = code
+  }
+}
+
+interface ErrorBody {
+  detail?: string
+  message?: string
+  code?: string
+}
+
+function statusToMessage(status: number, fallback: string): string {
+  switch (status) {
+    case 400: return fallback || 'Bad request.'
+    case 401: return 'Authentication required.'
+    case 403: return 'Forbidden.'
+    case 404: return fallback || 'Not found — your session may have expired. Please restart.'
+    case 408: return 'Request timed out.'
+    case 413: return 'Payload too large.'
+    case 422: return fallback || 'Invalid input.'
+    case 429: return 'Rate limited — please slow down.'
+    case 502:
+    case 503:
+    case 504: return 'Backend unavailable — try again in a moment.'
+  }
+  if (status >= 500) return 'Server error — try again.'
+  return fallback || `Request failed (HTTP ${status}).`
+}
 
 export async function createSession(resumeFile: File, jobDescription: string): Promise<string> {
   const form = new FormData()
@@ -12,17 +47,19 @@ export async function createSession(resumeFile: File, jobDescription: string): P
 
   const res = await fetch(`${BASE}/session`, { method: 'POST', body: form })
   if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: 'Unknown error' }))
-    throw new Error(err.detail ?? 'Failed to create session')
+    const err: ErrorBody = await res.json().catch(() => ({}))
+    throw new ApiError(statusToMessage(res.status, err.detail ?? ''), res.status, err.code)
   }
-  const data = await res.json()
-  return data.session_id as string
+  const data = await res.json() as { session_id?: string }
+  if (!data.session_id) throw new ApiError('Backend did not return a session_id.', 500)
+  return data.session_id
 }
 
 type SSEHandler = {
   onQuestionType?: (type: string) => void
   onDesign?: (design: unknown) => void
-  onToken?: (text: string) => void
+  onSection?: (name: string) => void
+  onToken?: (text: string, section?: string) => void
   onDone?: () => void
   onError?: (msg: string) => void
 }
@@ -33,23 +70,46 @@ async function consumeSSE(
   handlers: SSEHandler,
   signal?: AbortSignal,
 ) {
+  let terminated = false
+  const fireError = (msg: string) => {
+    if (terminated) return
+    terminated = true
+    handlers.onError?.(msg)
+  }
+  const fireDone = () => {
+    if (terminated) return
+    terminated = true
+    handlers.onDone?.()
+  }
+
   let res: Response
+  const timeout = AbortSignal.timeout(30_000)
+  const combinedSignal = signal ? AbortSignal.any([signal, timeout]) : timeout
   try {
     res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      signal,
+      signal: combinedSignal,
     })
   } catch (e) {
-    if ((e as Error).name === 'AbortError') return
-    handlers.onError?.('Network error')
+    const err = e as Error
+    if (err.name === 'AbortError' || err.name === 'TimeoutError') {
+      // Caller-initiated abort: stay silent. Otherwise it's the 30s timeout.
+      if (signal?.aborted) {
+        terminated = true
+        return
+      }
+      fireError('Request timed out — backend may be down.')
+      return
+    }
+    fireError('Network error — check your connection.')
     return
   }
 
   if (!res.ok || !res.body) {
-    const err = await res.json().catch(() => ({ detail: 'Stream failed' }))
-    handlers.onError?.(err.detail ?? 'Stream failed')
+    const err: ErrorBody = await res.json().catch(() => ({}))
+    fireError(statusToMessage(res.status, err.detail ?? err.message ?? ''))
     return
   }
 
@@ -71,7 +131,6 @@ async function consumeSSE(
         const lines = part.split('\n')
         let event = 'message'
         let data = ''
-
         for (const line of lines) {
           if (line.startsWith('event: ')) event = line.slice(7).trim()
           else if (line.startsWith('data: ')) data = line.slice(6)
@@ -79,27 +138,36 @@ async function consumeSSE(
 
         try {
           if (event === 'question_type') {
-            const parsed = JSON.parse(data)
-            handlers.onQuestionType?.(parsed.type)
+            const parsed = JSON.parse(data) as { type?: string }
+            if (parsed.type) handlers.onQuestionType?.(parsed.type)
           } else if (event === 'design') {
             handlers.onDesign?.(JSON.parse(data))
+          } else if (event === 'section') {
+            const parsed = JSON.parse(data) as { name?: string }
+            if (parsed.name) handlers.onSection?.(parsed.name)
           } else if (event === 'token') {
-            const parsed = JSON.parse(data)
-            handlers.onToken?.(parsed.text ?? '')
+            const parsed = JSON.parse(data) as { text?: string; section?: string }
+            handlers.onToken?.(parsed.text ?? '', parsed.section)
           } else if (event === 'done') {
-            handlers.onDone?.()
+            fireDone()
           } else if (event === 'error') {
-            const parsed = JSON.parse(data)
-            handlers.onError?.(parsed.message ?? 'Unknown error')
+            const parsed = JSON.parse(data) as ErrorBody
+            fireError(parsed.message ?? parsed.detail ?? 'Unknown error.')
           }
-        } catch {
-          // Partial JSON in buffer — handled by next iteration
+        } catch (parseErr) {
+          // Log but don't surface — partial frames are expected mid-stream.
+          console.warn('[SSE] event parse skipped', { event, data, parseErr })
         }
       }
     }
+    fireDone()
   } catch (e) {
-    if ((e as Error).name !== 'AbortError') throw e
-    // Aborted — silently exit
+    const err = e as Error
+    if (err.name === 'AbortError') {
+      terminated = true
+      return
+    }
+    fireError(`Stream interrupted: ${err.message}`)
   }
 }
 
@@ -115,33 +183,20 @@ export async function askQuestion(
 
 // ── Hiring Manager Mode ──────────────────────────────────────────────
 
-export async function uploadHMDoc(
-  sessionId: string,
-  file: File,
-): Promise<{ name: string; char_count: number }> {
-  const form = new FormData()
-  form.append('session_id', sessionId)
-  form.append('file', file)
-  const res = await fetch(`${BASE}/hm/upload-doc`, { method: 'POST', body: form })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({ detail: 'Upload failed' }))
-    throw new Error(err.detail ?? 'Failed to upload document')
-  }
-  return res.json()
-}
-
 export async function getHMShortcuts(
   sessionId: string,
+  signal?: AbortSignal,
 ): Promise<{ key: string; label: string; question: string }[]> {
   try {
     const res = await fetch(`${BASE}/hm/shortcuts`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: sessionId }),
+      signal,
     })
     if (!res.ok) return []
-    const data = await res.json()
-    return data.shortcuts ?? []
+    const data = await res.json() as { shortcuts?: unknown }
+    return Array.isArray(data.shortcuts) ? data.shortcuts as { key: string; label: string; question: string }[] : []
   } catch {
     return []
   }
@@ -154,6 +209,43 @@ export async function hmAsk(
   signal?: AbortSignal,
 ) {
   await consumeSSE(`${BASE}/hm/ask`, { session_id: sessionId, question, mode: 'quick' }, handlers, signal)
+}
+
+// ── Global Project Doc Store ─────────────────────────────────────────
+
+export async function uploadProjectDoc(
+  file: File,
+  signal?: AbortSignal,
+): Promise<{ doc_id: string; filename: string; char_count: number; chunks: number; existed: boolean }> {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(`${BASE}/hm/docs/upload`, { method: 'POST', body: form, signal })
+  if (!res.ok) {
+    const err: ErrorBody = await res.json().catch(() => ({}))
+    throw new ApiError(statusToMessage(res.status, err.detail ?? 'Upload failed'), res.status, err.code)
+  }
+  return res.json()
+}
+
+export async function listProjectDocs(
+  signal?: AbortSignal,
+): Promise<{ doc_id: string; filename: string; created_at: string }[]> {
+  try {
+    const res = await fetch(`${BASE}/hm/docs/list`, { signal })
+    if (!res.ok) return []
+    const data = await res.json() as { docs?: unknown }
+    return Array.isArray(data.docs) ? data.docs as { doc_id: string; filename: string; created_at: string }[] : []
+  } catch {
+    return []
+  }
+}
+
+export async function deleteProjectDoc(docId: string, signal?: AbortSignal): Promise<void> {
+  const res = await fetch(`${BASE}/hm/docs/${docId}`, { method: 'DELETE', signal })
+  if (!res.ok) {
+    const err: ErrorBody = await res.json().catch(() => ({}))
+    throw new ApiError(statusToMessage(res.status, err.detail ?? 'Delete failed'), res.status, err.code)
+  }
 }
 
 /** Live voice panel — bypasses question classifier for immediate first token. */
@@ -190,15 +282,20 @@ export async function getPracticeQuestions(
   sessionId: string,
   count = 10,
   questionType: 'behavioral' | 'technical' | 'mixed' = 'mixed',
+  signal?: AbortSignal,
 ): Promise<{ id: string; question: string; difficulty: string; category: string }[]> {
   try {
     const res = await fetch(`${BASE}/practice/questions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: sessionId, count, question_type: questionType }),
+      signal,
     })
-    const data = await res.json()
-    return data.questions ?? []
+    if (!res.ok) return []
+    const data = await res.json() as { questions?: unknown }
+    return Array.isArray(data.questions)
+      ? data.questions as { id: string; question: string; difficulty: string; category: string }[]
+      : []
   } catch {
     return []
   }
@@ -210,29 +307,47 @@ export async function evaluatePracticeAnswer(
   answer: string,
   difficulty: string,
   handlers: SSEHandler,
+  signal?: AbortSignal,
 ) {
-  await consumeSSE(`${BASE}/practice/evaluate`, { session_id: sessionId, question, answer, difficulty }, handlers)
+  await consumeSSE(
+    `${BASE}/practice/evaluate`,
+    { session_id: sessionId, question, answer, difficulty },
+    handlers,
+    signal,
+  )
 }
 
 export async function getPracticeSummary(
   sessionId: string,
   qaPairs: object[],
   handlers: SSEHandler,
+  signal?: AbortSignal,
 ) {
-  await consumeSSE(`${BASE}/practice/summary`, { session_id: sessionId, qa_pairs: qaPairs }, handlers)
+  await consumeSSE(
+    `${BASE}/practice/summary`,
+    { session_id: sessionId, qa_pairs: qaPairs },
+    handlers,
+    signal,
+  )
 }
 
 // ── Coding Practice ─────────────────────────────────────────────────
 
-export async function getCodeProblem(sessionId: string, difficulty = 'easy'): Promise<object | null> {
+export async function getCodeProblem(
+  sessionId: string,
+  difficulty = 'easy',
+  signal?: AbortSignal,
+): Promise<object | null> {
   try {
     const res = await fetch(`${BASE}/code-practice/problem`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: sessionId, difficulty }),
+      signal,
     })
-    const data = await res.json()
-    return data.problem ?? null
+    if (!res.ok) return null
+    const data = await res.json() as { problem?: unknown }
+    return (data.problem && typeof data.problem === 'object') ? data.problem as object : null
   } catch {
     return null
   }
@@ -245,14 +360,41 @@ export async function evaluateCode(
   code: string,
   language: string,
   handlers: SSEHandler,
+  signal?: AbortSignal,
 ) {
-  await consumeSSE(`${BASE}/code-practice/evaluate`, {
-    session_id: sessionId,
-    problem_title: problemTitle,
-    problem_description: problemDescription,
-    code,
-    language,
-  }, handlers)
+  await consumeSSE(
+    `${BASE}/code-practice/evaluate`,
+    {
+      session_id: sessionId,
+      problem_title: problemTitle,
+      problem_description: problemDescription,
+      code,
+      language,
+    },
+    handlers,
+    signal,
+  )
+}
+
+export async function getFollowUps(
+  sessionId: string,
+  question: string,
+  answer: string,
+  signal?: AbortSignal,
+): Promise<string[]> {
+  try {
+    const res = await fetch(`${BASE}/follow-ups`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, question, answer }),
+      signal,
+    })
+    if (!res.ok) return []
+    const data = await res.json() as { questions?: unknown }
+    return Array.isArray(data.questions) ? data.questions.filter((q): q is string => typeof q === 'string') : []
+  } catch {
+    return []
+  }
 }
 
 export async function drillComponent(
@@ -262,12 +404,18 @@ export async function drillComponent(
   context: string,
   depth: number,
   handlers: SSEHandler,
+  signal?: AbortSignal,
 ) {
-  await consumeSSE(`${BASE}/drill`, {
-    session_id: sessionId,
-    component_id: componentId,
-    component_name: componentName,
-    context,
-    depth,
-  }, handlers)
+  await consumeSSE(
+    `${BASE}/drill`,
+    {
+      session_id: sessionId,
+      component_id: componentId,
+      component_name: componentName,
+      context,
+      depth,
+    },
+    handlers,
+    signal,
+  )
 }

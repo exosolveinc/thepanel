@@ -4,15 +4,20 @@ Practice Interview client.
 - stream_evaluate_answer(): Claude streaming — per-answer feedback + score
 - stream_practice_summary(): Claude streaming — final strengths/weaknesses report
 """
+import asyncio
 import json
 import re
-from groq import AsyncGroq
+
 import anthropic
+from groq import AsyncGroq
+
 from config import settings
 from services.session_store import Session
+from utils.logging import get_logger
 
 _groq   = AsyncGroq(api_key=settings.groq_api_key)
 _claude = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+logger = get_logger(__name__)
 
 
 # ── Question generation ──────────────────────────────────────────────
@@ -23,9 +28,10 @@ async def generate_questions(
     question_type: str = "mixed",
 ) -> list[dict]:
     """Returns a list of interview question dicts using Groq (fast, non-streaming)."""
-    easy   = max(2, count // 4)
-    medium = max(3, count // 2)
-    hard   = count - easy - medium
+    count  = max(5, count)  # need at least 5 for a valid breakdown
+    easy   = max(1, count // 4)
+    medium = max(2, count // 2)
+    hard   = max(1, count - easy - medium)
 
     if question_type == "behavioral":
         breakdown = (
@@ -156,14 +162,15 @@ Evaluate this answer using exactly these headers:
 ## Ideal answer (2-3 sentences)
 [What a strong answer would have included]"""
 
-    async with _claude.messages.stream(
-        model=settings.claude_sonnet_model,
-        max_tokens=500,
-        system=_EVAL_SYSTEM,
-        messages=[{"role": "user", "content": user_msg}],
-    ) as stream:
-        async for text in stream.text_stream:
-            yield text
+    async with asyncio.timeout(settings.llm_total_timeout_seconds):
+        async with _claude.messages.stream(
+            model=settings.claude_sonnet_model,
+            max_tokens=500,
+            system=_EVAL_SYSTEM,
+            messages=[{"role": "user", "content": user_msg}],
+        ) as stream:
+            async for text in stream.text_stream:
+                yield text
 
 
 # ── Final summary ────────────────────────────────────────────────────
@@ -213,11 +220,12 @@ Generate a comprehensive performance report using exactly these headers:
 2. [Specific topic]
 3. [Specific topic]"""
 
-    async with _claude.messages.stream(
-        model=settings.claude_sonnet_model,
-        max_tokens=700,
-        system=_SUMMARY_SYSTEM,
-        messages=[{"role": "user", "content": user_msg}],
-    ) as stream:
-        async for text in stream.text_stream:
-            yield text
+    async with asyncio.timeout(settings.llm_total_timeout_seconds):
+        async with _claude.messages.stream(
+            model=settings.claude_sonnet_model,
+            max_tokens=700,
+            system=_SUMMARY_SYSTEM,
+            messages=[{"role": "user", "content": user_msg}],
+        ) as stream:
+            async for text in stream.text_stream:
+                yield text

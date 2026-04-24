@@ -1,76 +1,53 @@
 """Coding Practice JSON + SSE endpoints."""
-import json
 import asyncio
-from fastapi import APIRouter
+
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+
+from models.schemas import ProblemRequest, EvaluateCodeRequest
 from services.session_store import get_session
 from services.code_practice_client import generate_problem, stream_evaluate_code
+from utils.sse import sse_event, sse_error, sse_done, stream_with_cleanup
 
 router = APIRouter(prefix="/api", tags=["code-practice"])
-
-
-def _sse(event: str, data: str) -> str:
-    return f"event: {event}\ndata: {data}\n\n"
-
-
-# ── Generate problem (JSON, non-streaming) ───────────────────────────
-
-class ProblemRequest(BaseModel):
-    session_id: str
-    difficulty: str = "easy"
+_SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 
 @router.post("/code-practice/problem")
 async def get_problem(request: ProblemRequest):
     session = get_session(request.session_id)
     if not session:
-        return {"error": "Session not found", "problem": None}
+        raise HTTPException(status_code=404, detail="Session not found. Please restart.")
     problem = await generate_problem(session, request.difficulty)
     return {"problem": problem}
-
-
-# ── Evaluate submitted code (SSE) ────────────────────────────────────
-
-class EvaluateCodeRequest(BaseModel):
-    session_id: str
-    problem_title: str
-    problem_description: str
-    code: str
-    language: str = "python"
 
 
 async def _eval_generator(request: EvaluateCodeRequest):
     session = get_session(request.session_id)
     if not session:
-        yield _sse("error", json.dumps({"message": "Session not found."}))
+        yield sse_error("Session not found.")
         return
 
     if not request.code.strip():
-        yield _sse("error", json.dumps({"message": "No code submitted."}))
+        yield sse_error("No code submitted.")
         return
 
-    try:
-        async for token in stream_evaluate_code(
-            session,
-            request.problem_title,
-            request.problem_description,
-            request.code,
-            request.language,
-        ):
-            yield _sse("token", json.dumps({"text": token}))
-            await asyncio.sleep(0)
-    except Exception as e:
-        yield _sse("error", json.dumps({"message": str(e)}))
-        return
-
-    yield _sse("done", "{}")
+    async for token in stream_evaluate_code(
+        session,
+        request.problem_title,
+        request.problem_description,
+        request.code,
+        request.language,
+    ):
+        yield sse_event("token", {"text": token})
+        await asyncio.sleep(0)
+    yield sse_done()
 
 
 @router.post("/code-practice/evaluate")
 async def evaluate_code(request: EvaluateCodeRequest):
     return StreamingResponse(
-        _eval_generator(request),
+        stream_with_cleanup(_eval_generator(request)),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers=_SSE_HEADERS,
     )

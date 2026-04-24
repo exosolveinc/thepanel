@@ -1,11 +1,17 @@
 """Groq async streaming client — basic/behavioral Q&A and system design structure."""
+import asyncio
 import json
 import re
+
 from groq import AsyncGroq
+
 from config import settings
 from services.session_store import Session
+from utils.history import truncate_for_llm
+from utils.logging import get_logger
 
 _client = AsyncGroq(api_key=settings.groq_api_key)
+logger = get_logger(__name__)
 
 _BASE_SYSTEM = """You are The Panel — an expert interview coach and senior engineer.
 You help candidates ace technical interviews by giving sharp, confident, well-structured answers.
@@ -113,7 +119,7 @@ Separate with exactly: ---NARRATIVE---
 
 def _build_messages(session: Session, question: str, system: str) -> list[dict]:
     messages = [{"role": "system", "content": system}]
-    messages.extend(session.history[-8:])
+    messages.extend(truncate_for_llm(session.history))
     messages.append({"role": "user", "content": question})
     return messages
 
@@ -135,17 +141,18 @@ async def stream_basic_answer(session: Session, question: str, mode: str = "quic
     messages = _build_messages(session, question, system)
     max_tokens = 1400 if mode == "code" else (800 if mode == "quick" else 1500)
 
-    stream = await _client.chat.completions.create(
-        model=settings.groq_main_model,
-        messages=messages,
-        max_tokens=max_tokens,
-        temperature=0.3,
-        stream=True,
-    )
-    async for chunk in stream:
-        delta = chunk.choices[0].delta.content
-        if delta:
-            yield delta
+    async with asyncio.timeout(settings.llm_total_timeout_seconds):
+        stream = await _client.chat.completions.create(
+            model=settings.groq_main_model,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=0.3,
+            stream=True,
+        )
+        async for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                yield delta
 
 
 async def stream_system_design(session: Session, question: str):
@@ -160,17 +167,18 @@ async def stream_system_design(session: Session, question: str):
     messages = _build_messages(session, question, system)
 
     full_response = ""
-    stream = await _client.chat.completions.create(
-        model=settings.groq_main_model,
-        messages=messages,
-        max_tokens=2048,
-        temperature=0.3,
-        stream=True,
-    )
-    async for chunk in stream:
-        delta = chunk.choices[0].delta.content
-        if delta:
-            full_response += delta
+    async with asyncio.timeout(settings.llm_total_timeout_seconds):
+        stream = await _client.chat.completions.create(
+            model=settings.groq_main_model,
+            messages=messages,
+            max_tokens=2048,
+            temperature=0.3,
+            stream=True,
+        )
+        async for chunk in stream:
+            delta = chunk.choices[0].delta.content
+            if delta:
+                full_response += delta
 
     # Split JSON from narrative
     if "---NARRATIVE---" in full_response:
@@ -210,3 +218,28 @@ def _auto_layout(design: dict) -> dict:
 
     design["components"] = components
     return design
+
+
+async def generate_follow_ups(session: Session, question: str, answer: str) -> list[str]:
+    """Generate 3 follow-up questions an interviewer would likely ask next."""
+    prompt = (
+        f"Given this interview Q&A, generate exactly 3 sharp follow-up questions "
+        f"an interviewer would ask next. Return ONLY a JSON array of 3 short strings, no other text.\n\n"
+        f"Question: {question}\n"
+        f"Answer: {answer[:800]}"
+    )
+    try:
+        response = await _client.chat.completions.create(
+            model=settings.groq_fast_model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=300,
+            temperature=0.4,
+        )
+        content = response.choices[0].message.content or "[]"
+        match = re.search(r'\[.*\]', content, re.DOTALL)
+        return json.loads(match.group() if match else content)
+    except json.JSONDecodeError:
+        return []  # malformed model output — expected occasionally
+    except Exception:
+        logger.warning("generate_follow_ups failed", exc_info=True)
+        return []
